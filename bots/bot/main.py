@@ -253,9 +253,14 @@ class Player:
             elif ct.can_destroy(move_pos):
                 tile_id = ct.get_tile_building_id(move_pos)
                 if not (
-                    ct.get_entity_type(tile_id) == EntityType.CONVEYOR and 
-                    get_from_dir(self.distance_map, pos.add(chosen), ct.get_direction(tile_id))
-                    == get_from_dir(self.distance_map, pos.add(chosen), next_chosen)
+                    (
+                        ct.get_entity_type(tile_id) == EntityType.CONVEYOR and 
+                        get_from_dir(self.distance_map, pos.add(chosen), ct.get_direction(tile_id))
+                        == get_from_dir(self.distance_map, pos.add(chosen), next_chosen)
+                    ) or (
+                        ct.get_team(tile_id) == ct.get_team() and
+                        ct.get_entity_type(tile_id) == EntityType.BRIDGE
+                    )
                 ):
                     ct.destroy(move_pos)
                     if ct.can_build_conveyor(move_pos, next_chosen):
