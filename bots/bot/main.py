@@ -235,6 +235,10 @@ class Player:
         if self.walking_back_first:
             if ct.get_global_resources()[0] >= ct.get_conveyor_cost()[0]:
                 if ct.can_destroy(pos):
+                    building_id = ct.get_tile_building_id(pos)
+                    if building_id and ct.get_entity_type(building_id) == EntityType.BRIDGE and ct.get_team(building_id) == ct.get_team():
+                        self.walking_back_first = False
+                        return
                     ct.destroy(pos)
                     ct.build_conveyor(pos, chosen)
                     self.walking_back_first = False
