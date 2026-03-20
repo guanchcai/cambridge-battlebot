@@ -2,7 +2,7 @@ import random
 import math
 from enum import Enum
 from cambc import Controller, Direction, EntityType, Environment, Position
-from path_finder import flood_fill, get_cardinal
+from path_finder_two import flood_fill, get_cardinal
 import time
 # non-centre directions
 DIRECTIONS = [d for d in Direction if d != Direction.CENTRE]
@@ -63,6 +63,8 @@ class Player:
         if (self.current_target_pos):
             ct.draw_indicator_line(ct.get_position(), self.current_target_pos, 0, 0, 1)
 
+        print(f"Bot is currently {self.current_state}")
+
         etype = ct.get_entity_type()
         if etype == EntityType.CORE:
             if self.num_spawned == 0:
@@ -71,7 +73,7 @@ class Player:
                     ct.spawn_builder(spawn_pos)
                     self.num_spawned += 1
                 return
-            if self.num_spawned * 500 <= ct.get_global_resources()[0] and self.num_spawned < 2:
+            if self.num_spawned * 500 <= ct.get_global_resources()[0] and self.num_spawned < 10:
                 # if we haven't spawned 3 builder bots yet, try to spawn one on a random tile
                 spawn_pos = ct.get_position()
                 if ct.can_spawn(spawn_pos):
@@ -83,7 +85,13 @@ class Player:
             for tile in ct.get_nearby_tiles():
                 env = ct.get_tile_env(tile)
                 building_id = ct.get_tile_building_id(tile)
-                if env == Environment.EMPTY and (building_id != None and ((ct.get_entity_type(building_id) not in PASSABLE) or (ct.get_team(building_id) != ct.get_team()))):
+                if env == Environment.EMPTY and (
+                        building_id != None and 
+                        (
+                            (ct.get_entity_type(building_id) not in PASSABLE) or 
+                            (ct.get_team(building_id) != ct.get_team())
+                        )
+                    ):
                     env = Environment.WALL
                 self.internal_map[tile.x][tile.y] = env 
                 if tile in self.unexplored:
@@ -142,16 +150,12 @@ class Player:
                     self.target_distance_squared = 0
                     self.current_state = BOT_STATE.GOING_TO_ORE
         
-            print(f"Time before movement {ct.get_cpu_time_elapsed() - start_time}")
             # Move randomly
             if (not self.current_target_pos):
                 self._random_movement(ct)
 
-            print(ct.get_cpu_time_elapsed() - start_time)
             if (self.current_target_pos):
                 self.move_to_pos(ct)
-                
-            print(ct.get_cpu_time_elapsed() - start_time)
 
     def _random_movement(self, ct: Controller):
         if self.current_target_pos:
@@ -159,7 +163,6 @@ class Player:
                 self.current_target_pos = self._nearest_unexplored(ct.get_position())
         else:
             self.current_target_pos = self._nearest_unexplored(ct.get_position())
-            print(f"Time to select: {ct.get_cpu_time_elapsed()}")
             if not self.current_target_pos:
                 # Explored all areas
                 self.current_target_pos = self.enemy_pos
@@ -220,7 +223,7 @@ class Player:
                 self.target_distance_squared = 0
                 return
 
-        if self.previous_target_pos != self.current_target_pos:
+        if self.previous_target_pos != self.current_target_pos or not self.distance_map:
             self.previous_target_pos = self.current_target_pos
             print("Start filling!")
             self.distance_map = flood_fill(self.internal_map, self.current_target_pos, pos, self.target_distance_squared)
@@ -232,7 +235,6 @@ class Player:
 
         if not self.distance_map[move_pos.x][move_pos.y] or math.isinf(self.distance_map[move_pos.x][move_pos.y]):
             self.print_distance_map()
-            raise RuntimeError
 
         # Make sure to place a conveyer at standing point on the first iteration
         if (self.walking_back_first):
@@ -272,7 +274,7 @@ class Player:
             else:
                 print("Oh no i hit a wall")
                 self.walking_back_first = True
-                self.distance_map = flood_fill(self.internal_map, self.current_target_pos, pos)
+                self.distance_map = None
             return
         if ct.can_build_road(move_pos):
             ct.build_road(move_pos)
@@ -283,7 +285,7 @@ class Player:
             self._pick_random(ct)
         else:
             # Maybe we have hit a wall, so update the distance_map
-            self.distance_map = flood_fill(self.internal_map, self.current_target_pos, pos, self.target_distance_squared)
+            self.distance_map = None
         print(f"Total time: {ct.get_cpu_time_elapsed() - start_time}")
 
     def print_distance_map(self):

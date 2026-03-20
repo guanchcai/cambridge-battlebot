@@ -1,0 +1,63 @@
+import heapq
+import math
+from cambc import Position, Environment, Direction
+
+CARDINAL_DELTAS = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+
+def flood_fill(map: list[list[Environment | None]], target: Position, origin: Position, target_distance_squared=0):
+    width = len(map)
+    height = len(map[0])
+    distance_map = [[None] * height for _ in range(width)]
+    g_score = [[math.inf] * height for _ in range(width)]
+
+    tx, ty = target.x, target.y
+    ox, oy = origin.x, origin.y
+
+    def is_target_zone(x, y) -> bool:
+        dx, dy = x - tx, y - ty
+        return dx*dx + dy*dy <= target_distance_squared
+
+    def heuristic(x, y) -> int:
+        return abs(x - ox) + abs(y - oy)
+
+    g_score[tx][ty] = 0
+    distance_map[tx][ty] = 0
+    open_set = [(heuristic(tx, ty), tx, ty)]
+
+    WALL_TYPES = (Environment.WALL, Environment.ORE_AXIONITE, Environment.ORE_TITANIUM)
+
+    while open_set:
+        _, cx, cy = heapq.heappop(open_set)
+
+        if cx == ox and cy == oy:
+            return distance_map
+
+        for dx, dy in CARDINAL_DELTAS:
+            nx, ny = cx + dx, cy + dy
+
+            if not (0 <= nx < width and 0 <= ny < height):
+                continue
+
+            if distance_map[nx][ny] is not None:
+                continue
+
+            new_g = 0 if is_target_zone(nx, ny) else g_score[cx][cy] + 1
+
+            if map[nx][ny] in WALL_TYPES and not is_target_zone(nx, ny):
+                distance_map[nx][ny] = math.inf
+                continue
+
+            if new_g < g_score[nx][ny]:
+                g_score[nx][ny] = new_g
+                distance_map[nx][ny] = new_g
+                heapq.heappush(open_set, (new_g + heuristic(nx, ny), nx, ny))
+
+    return distance_map
+
+
+def get_cardinal(p: Position, w: int, h: int):
+    return [
+        Position(p.x + dx, p.y + dy)
+        for dx, dy in CARDINAL_DELTAS
+        if 0 <= p.x + dx < w and 0 <= p.y + dy < h
+    ]
