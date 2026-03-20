@@ -97,40 +97,47 @@ class Player:
                         del self.buckets[bucket]  # prune empty buckets
                 if env == Environment.ORE_TITANIUM:
                     self.ore_sites.add(tile)
-                    if ct.get_tile_building_id(tile) != None:
+                    temp_id = ct.get_tile_building_id(tile)
+                    if temp_id and ct.get_team(temp_id) == ct.get_team():
                         self.visited_ores.add(tile)
 
             # Check if we have reached an ore site
-            for d in CARDINAL_DIRECTIONS:
-                check_pos = pos.add(d)
-                if not is_in_bound(check_pos, ct):
-                    continue
-                check_id = ct.get_tile_building_id(check_pos)
-                if (ct.can_build_harvester(check_pos) and ct.get_tile_env(check_pos) == Environment.ORE_TITANIUM) or (check_id and ct.get_entity_type(check_id) == EntityType.HARVESTER and ct.get_team(check_id) != ct.get_team()):
-                    if (ct.can_build_harvester(check_pos)):
-                        ct.build_harvester(check_pos)
-                    self.current_state = BOT_STATE.WALKING_BACK
-                    self.walking_back_first = True
-                    self.current_target_pos = self.original_pos
-                    self.target_distance_squared = 16
-                    return
+            if self.current_state != BOT_STATE.WALKING_BACK:
+                for d in CARDINAL_DIRECTIONS:
+                    check_pos = pos.add(d)
+                    if not is_in_bound(check_pos, ct):
+                        continue
+                    check_id = ct.get_tile_building_id(check_pos)
+                    if (ct.can_build_harvester(check_pos) and ct.get_tile_env(check_pos) == Environment.ORE_TITANIUM) or (check_id and ct.get_entity_type(check_id) == EntityType.HARVESTER and ct.get_team(check_id) != ct.get_team()):
+                        if (ct.can_build_harvester(check_pos)):
+                            ct.build_harvester(check_pos)
+                        self.visited_ores.add(check_pos)
+                        self.current_state = BOT_STATE.WALKING_BACK
+                        self.walking_back_first = True
+                        self.current_target_pos = self.original_pos
+                        self.target_distance_squared = 16
+                        return
                 
             if (self.current_state == BOT_STATE.WALKING_BACK):
                 if pos.distance_squared(self.original_pos) <= 49:
                     buildings_nearby = ct.get_nearby_buildings(9)
-                    bridges_nearby = list(filter(lambda b: ct.get_entity_type(b) == EntityType.BRIDGE and ct.get_position(b).distance_squared(self.original_pos) <= 16, buildings_nearby))
+                    bridges_nearby = list(filter(lambda b: ct.get_entity_type(b) == EntityType.BRIDGE and ct.get_position(b).distance_squared(self.original_pos) <= 16 and ct.get_team(b) == ct.get_team(), buildings_nearby))
                     # We are close enough to the base
                     if len(bridges_nearby) >= 1:
                         bridge_id = random.choice(bridges_nearby)
                         if ct.get_global_resources()[0] >= ct.get_bridge_cost()[0]:
                             if ct.can_destroy(pos):
+                                temp_id = ct.get_tile_building_id(pos)
                                 self.current_state = BOT_STATE.WANDERING
                                 self.walking_back_first = False
                                 self.current_target_pos = None
                                 self.previous_target_pos = None
                                 self.target_distance_squared = 0
-                                ct.destroy(pos)
-                                ct.build_bridge(pos, ct.get_position(bridge_id))
+                                if temp_id and ct.get_team(temp_id) == ct.get_team() and ct.get_entity_type(temp_id) == EntityType.BRIDGE:
+                                    pass
+                                else:
+                                    ct.destroy(pos)
+                                    ct.build_bridge(pos, ct.get_position(bridge_id))
                                 self._random_movement(ct)   
                         return
 
@@ -193,6 +200,7 @@ class Player:
             return
         start_time = ct.get_cpu_time_elapsed()
         pos = ct.get_position()
+        print(f"Start time: {start_time}")
 
         if self.current_state == BOT_STATE.WALKING_BACK and pos.distance_squared(self.current_target_pos) <= self.target_distance_squared:
             self.current_state = BOT_STATE.WANDERING
@@ -215,6 +223,7 @@ class Player:
             self.distance_map = None
             return
 
+        print(self.previous_target_pos == self.current_target_pos)
         if self.previous_target_pos != self.current_target_pos or not self.distance_map:
             self.previous_target_pos = self.current_target_pos
             print("Start filling!")
@@ -233,8 +242,11 @@ class Player:
         move_pos = pos.add(chosen)
 
         if self.walking_back_first:
+            print("a")
             if ct.get_global_resources()[0] >= ct.get_conveyor_cost()[0]:
+                print("b")
                 if ct.can_destroy(pos):
+                    print("c")
                     building_id = ct.get_tile_building_id(pos)
                     if building_id and ct.get_entity_type(building_id) == EntityType.BRIDGE and ct.get_team(building_id) == ct.get_team():
                         self.walking_back_first = False

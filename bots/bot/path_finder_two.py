@@ -14,13 +14,16 @@ def flood_fill(map: list[list[Environment | None]], target: Position, origin: Po
     ox, oy = origin.x, origin.y
     print((ox, oy))
 
+    if not is_in_bound(tx, ty, width, height):
+        return distance_map
+
     def is_target_zone(x, y) -> bool:
         dx, dy = x - tx, y - ty
         return dx*dx + dy*dy < target_distance_squared
 
     def heuristic(x, y) -> int:
         return abs(x - ox) + abs(y - oy)
-
+    
     g_score[tx][ty] = 0
     distance_map[tx][ty] = 0
     open_set = [(heuristic(tx, ty), tx, ty)]
@@ -60,5 +63,8 @@ def get_cardinal(p: Position, w: int, h: int):
     return [
         Position(p.x + dx, p.y + dy)
         for dx, dy in CARDINAL_DELTAS
-        if 0 <= p.x + dx < w and 0 <= p.y + dy < h
+        if is_in_bound(p.x + dx, p.y + dy)
     ]
+
+def is_in_bound(x: int, y: int, w: int, h: int):
+    return 0 <= x < w and 0 <= y < h
