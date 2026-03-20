@@ -252,26 +252,24 @@ class Player:
                 ct.build_conveyor(move_pos, next_chosen)
             elif ct.can_destroy(move_pos):
                 tile_id = ct.get_tile_building_id(move_pos)
-                if not (
-                    (
-                        ct.get_entity_type(tile_id) == EntityType.CONVEYOR and 
-                        get_from_dir(self.distance_map, pos.add(chosen), ct.get_direction(tile_id))
-                        == get_from_dir(self.distance_map, pos.add(chosen), next_chosen)
-                    ) or (
-                        ct.get_team(tile_id) == ct.get_team() and
-                        ct.get_entity_type(tile_id) == EntityType.BRIDGE
-                    )
+                if ( 
+                    ct.get_entity_type(tile_id) == EntityType.CONVEYOR and 
+                    get_from_dir(self.distance_map, pos.add(chosen), ct.get_direction(tile_id))
+                    == get_from_dir(self.distance_map, pos.add(chosen), next_chosen)
+                ) or (
+                    ct.get_team(tile_id) == ct.get_team() and
+                    ct.get_entity_type(tile_id) == EntityType.BRIDGE
                 ):
-                    ct.destroy(move_pos)
-                    if ct.can_build_conveyor(move_pos, next_chosen):
-                        ct.build_conveyor(move_pos, next_chosen)
-                else:
                     self.current_target_pos = None
                     self.previous_target_pos = None
                     self.target_distance_squared = 0
                     self.current_state = BOT_STATE.WANDERING
                     self.walking_back_first = False
                     self.distance_map = None
+                else:
+                    ct.destroy(move_pos)
+                    if ct.can_build_conveyor(move_pos, next_chosen):
+                        ct.build_conveyor(move_pos, next_chosen)
 
             if ct.can_move(chosen):
                 ct.move(chosen)
