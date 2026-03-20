@@ -12,10 +12,11 @@ def flood_fill(map: list[list[Environment | None]], target: Position, origin: Po
 
     tx, ty = target.x, target.y
     ox, oy = origin.x, origin.y
+    print((ox, oy))
 
     def is_target_zone(x, y) -> bool:
         dx, dy = x - tx, y - ty
-        return dx*dx + dy*dy <= target_distance_squared
+        return dx*dx + dy*dy < target_distance_squared
 
     def heuristic(x, y) -> int:
         return abs(x - ox) + abs(y - oy)
@@ -41,17 +42,17 @@ def flood_fill(map: list[list[Environment | None]], target: Position, origin: Po
             if distance_map[nx][ny] is not None:
                 continue
 
-            new_g = 0 if is_target_zone(nx, ny) else g_score[cx][cy] + 1
-
             if map[nx][ny] in WALL_TYPES and not is_target_zone(nx, ny):
                 distance_map[nx][ny] = math.inf
                 continue
+
+            new_g = 0 if is_target_zone(nx, ny) else g_score[cx][cy] + 1
 
             if new_g < g_score[nx][ny]:
                 g_score[nx][ny] = new_g
                 distance_map[nx][ny] = new_g
                 heapq.heappush(open_set, (new_g + heuristic(nx, ny), nx, ny))
-
+    print("I HATE YOU I HATE YOU I HATE YOU WHY WHY WHY WHY WHY WHY WHY")
     return distance_map
 
 

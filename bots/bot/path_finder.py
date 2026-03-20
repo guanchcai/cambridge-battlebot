@@ -24,6 +24,7 @@ def flood_fill(map: list[list[Environment | None]], target: Position, origin: Po
                 distance_map[c_p.x][c_p.y] = math.inf
                 continue
             if (c_p.x == origin.x and c_p.y == origin.y):
+                distance_map[c_p.x][c_p.y] = distance_map[p.x][p.y] + 1                
                 return distance_map
             if (distance_map[c_p.x][c_p.y] == None):
                 distance_map[c_p.x][c_p.y] = distance_map[p.x][p.y] + 1
