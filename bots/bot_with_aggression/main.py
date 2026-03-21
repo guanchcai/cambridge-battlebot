@@ -29,6 +29,7 @@ class Player:
         self.spawn_queue = [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST]
 
         self.internal_map = None
+        self.internal_walkable_map = None
         self.current_state = BOT_STATE.WANDERING
         self.original_pos = None
         self.walking_back_first = False
@@ -52,15 +53,19 @@ class Player:
         start_time = ct.get_cpu_time_elapsed()
         if (not self.original_pos):
             core_center = find_core_center(ct)
+            pos = ct.get_position()
             if core_center:
                 self.original_pos = core_center
             else:
-                self.original_pos = ct.get_position()
+                self.original_pos = pos
+            
+            if abs(self.original_pos.x - pos.x) + abs(self.original_pos.y - pos.y) == 2:
+                self.bot_type = BOT_TYPE.AGGRESSOR
             
             self.enemy_pos = Position (ct.get_map_width() - self.original_pos.x, ct.get_map_height() - self.original_pos.y)
             if (self.bot_type == BOT_TYPE.NORMAL):
-                d = clamp(self.original_pos, ct.get_position())
-                self.current_target_pos = ct.get_position().add(d).add(d)
+                d = clamp(self.original_pos, pos)
+                self.current_target_pos = pos.add(d).add(d)
                 self.current_state = BOT_STATE.GOING_TO_ORE
             elif (self.bot_type == BOT_TYPE.AGGRESSOR):
                 pass
@@ -72,7 +77,7 @@ class Player:
 
         etype = ct.get_entity_type()
         if etype == EntityType.CORE:
-            if (self.num_spawned * 250 <= ct.get_global_resources()[0] and self.num_spawned < 8):
+            if (self.num_spawned * 250 <= ct.get_global_resources()[0] and self.num_spawned < 5):
                 # if we haven't spawned 3 builder bots yet, try to spawn one on a random tile
                 direction = self.spawn_queue.pop() if self.spawn_queue else random.choice(CARDINAL_DIRECTIONS)
                 spawn_pos = ct.get_position().add(direction)
@@ -80,7 +85,7 @@ class Player:
                     ct.spawn_builder(spawn_pos)
                     self.num_spawned += 1
                     return
-            if (self.num_spawned >= 8 and ct.get_global_resources()[0] >= self.num_spawned * 50):
+            if ((self.num_spawned >= 5 or ct.get_current_round() >= 100) and ct.get_global_resources()[0] >= min(250, ct.get_conveyor_cost()[0]) + 50 and self.num_spawned <= 500):
                 direction = random.choice([Direction.NORTHEAST, Direction.NORTHWEST, Direction.SOUTHEAST, Direction.SOUTHWEST])
                 spawn_pos = ct.get_position().add(direction)
                 if ct.can_spawn(spawn_pos):
@@ -90,6 +95,7 @@ class Player:
         elif etype == EntityType.BUILDER_BOT:
             if (not self.internal_map):
                 self.internal_map = [[None] * ct.get_map_height() for _ in range(ct.get_map_width())]
+                self.internal_walkable_map = [[None] * ct.get_map_height() for _ in range(ct.get_map_width())]
                 for x in range(ct.get_map_width()):
                     for y in range(ct.get_map_height()):
                         pos = Position(x, y)
@@ -112,7 +118,7 @@ class Player:
                     if not is_in_bound(check_pos, ct):
                         continue
                     check_id = ct.get_tile_building_id(check_pos)
-                    if (ct.can_build_harvester(check_pos) and ct.get_tile_env(check_pos) == Environment.ORE_TITANIUM) or (check_id and ct.get_entity_type(check_id) == EntityType.HARVESTER and ct.get_team(check_id) != ct.get_team()):
+                    if (ct.can_build_harvester(check_pos) and ct.get_tile_env(check_pos) in [Environment.ORE_TITANIUM, Environment.ORE_AXIONITE]) or (check_id and ct.get_entity_type(check_id) == EntityType.HARVESTER and ct.get_team(check_id) != ct.get_team()):
                         if (ct.can_build_harvester(check_pos)):
                             ct.build_harvester(check_pos)
                         self.visited_ores.add(check_pos)
@@ -162,11 +168,12 @@ class Player:
                 self.move_to_pos(ct)
 
     def _random_movement(self, ct: Controller):
+        pos = ct.get_position() if self.bot_type != BOT_TYPE.AGGRESSOR else self.enemy_pos
         if self.current_target_pos:
             if (self.internal_map[self.current_target_pos.x][self.current_target_pos.y] != None):
-                self.current_target_pos = self._nearest_unexplored(ct.get_position())
+                self.current_target_pos = self._nearest_unexplored(pos)
         else:
-            self.current_target_pos = self._nearest_unexplored(ct.get_position())
+            self.current_target_pos = self._nearest_unexplored(pos)
             if not self.current_target_pos:
                 # Explored all areas
                 self.current_target_pos = self.enemy_pos
@@ -204,23 +211,25 @@ class Player:
     def update_map(self, ct: Controller):
         for tile in ct.get_nearby_tiles():
             env = ct.get_tile_env(tile)
+            envp = env
             building_id = ct.get_tile_building_id(tile)
-            if env == Environment.EMPTY and (
-                    building_id != None and 
-                    (
-                        (ct.get_entity_type(building_id) not in PASSABLE) or 
-                        (ct.get_team(building_id) != ct.get_team())
-                    )
-                ):
-                env = Environment.WALL
+            if env == Environment.EMPTY and building_id != None:
+                if (ct.get_entity_type(building_id) not in PASSABLE):
+                    env = Environment.WALL
+                    envp = env
+                if (ct.get_team(building_id) != ct.get_team()):
+                    env = Environment.WALL
+                    if ct.get_entity_type(building_id) == EntityType.CORE:
+                        envp = Environment.WALL
             self.internal_map[tile.x][tile.y] = env 
+            self.internal_walkable_map[tile.x][tile.y] = envp
             if tile in self.unexplored:
                 self.unexplored.remove(tile)
                 bucket = (tile.x // self.bucket_size, tile.y // self.bucket_size)
                 self.buckets[bucket].remove(tile)
                 if not self.buckets[bucket]:
                     del self.buckets[bucket]  # prune empty buckets
-            if env == Environment.ORE_TITANIUM:
+            if env in [Environment.ORE_TITANIUM, Environment.ORE_AXIONITE]:
                 self.ore_sites.add(tile)
                 temp_id = ct.get_tile_building_id(tile)
                 if temp_id and ct.get_team(temp_id) == ct.get_team():
@@ -260,7 +269,7 @@ class Player:
         if self.previous_target_pos != self.current_target_pos or not self.distance_map:
             self.previous_target_pos = self.current_target_pos
             print("Start filling!")
-            self.distance_map = flood_fill(self.internal_map, self.current_target_pos, pos, self.target_distance_squared, self.current_state != BOT_STATE.WALKING_BACK)
+            self.distance_map = flood_fill((self.internal_map if self.current_state == BOT_STATE.WALKING_BACK else self.internal_walkable_map), self.current_target_pos, pos, self.target_distance_squared, self.current_state != BOT_STATE.WALKING_BACK)
             self.print_distance_map()
             print(f"Fill time: {ct.get_cpu_time_elapsed() - start_time}")
         
@@ -320,7 +329,8 @@ class Player:
                     if ct.can_build_conveyor(move_pos, next_chosen):
                         ct.build_conveyor(move_pos, next_chosen)
 
-            if ct.can_move(chosen):
+            building_id = ct.get_tile_building_id(move_pos)
+            if ct.can_move(chosen) and not(building_id and ct.get_team(building_id) != ct.get_team()):
                 ct.move(chosen)
             else:
                 print("Oh no i hit a wall")
@@ -370,7 +380,7 @@ class Player:
         
         pos = ct.get_position()
         building_id = ct.get_tile_building_id(pos)
-        if building_id and ct.get_team() != ct.get_team(building_id):
+        if building_id and ct.get_team() != ct.get_team(building_id) and ct.get_entity_type(building_id) != EntityType.ROAD:
             ct.self_destruct()
             return
 
