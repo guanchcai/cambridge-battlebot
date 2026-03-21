@@ -2,7 +2,7 @@ import random
 import math
 from enum import Enum
 from cambc import Controller, Direction, EntityType, Environment, Position
-from path_finder_two import flood_fill, get_cardinal
+from path_finder_two import flood_fill
 import time
 # non-centre directions
 DIRECTIONS = [d for d in Direction if d != Direction.CENTRE]
@@ -215,7 +215,7 @@ class Player:
             self.target_distance_squared = 0
             self.distance_map = None
             return
-        elif pos.distance_squared(self.current_target_pos) <= 1:
+        elif abs(pos.x - self.current_target_pos.x) + abs(pos.y - self.current_target_pos.y) <= 1:
             self.current_state = BOT_STATE.WANDERING
             self.current_target_pos = None
             self.previous_target_pos = None
@@ -223,30 +223,29 @@ class Player:
             self.distance_map = None
             return
 
-        print(self.previous_target_pos == self.current_target_pos)
         if self.previous_target_pos != self.current_target_pos or not self.distance_map:
             self.previous_target_pos = self.current_target_pos
             print("Start filling!")
-            self.distance_map = flood_fill(self.internal_map, self.current_target_pos, pos, self.target_distance_squared)
+            self.distance_map = flood_fill(self.internal_map, self.current_target_pos, pos, self.target_distance_squared, self.current_state != BOT_STATE.WALKING_BACK)
+            self.print_distance_map()
             print(f"Fill time: {ct.get_cpu_time_elapsed() - start_time}")
         
-        decisions = [d for d in CARDINAL_DIRECTIONS if is_in_bound(pos.add(d), ct)]
+        print(pos.distance_squared(self.current_target_pos))
+        decisions = [d for d in (CARDINAL_DIRECTIONS if self.current_state == BOT_STATE.WALKING_BACK or max(abs(pos.x - self.current_target_pos.x), abs(pos.y - self.current_target_pos.y)) == 1 else DIRECTIONS) if is_in_bound(pos.add(d), ct)]
         chosen = min(decisions, key=lambda d: get_from_dir(self.distance_map, pos, d))
+        print(f"Chosen direction: {chosen}")
+
         if math.isinf(get_from_dir(self.distance_map, pos, chosen)):
             # This shouldn't happen at all, but as a fail safe:
             print("Please fix")
             self.internal_map = None
             self.previous_target_pos = None
-            self.print_distance_map()
             return
         move_pos = pos.add(chosen)
 
         if self.walking_back_first:
-            print("a")
             if ct.get_global_resources()[0] >= ct.get_conveyor_cost()[0]:
-                print("b")
                 if ct.can_destroy(pos):
-                    print("c")
                     building_id = ct.get_tile_building_id(pos)
                     if building_id and ct.get_entity_type(building_id) == EntityType.BRIDGE and ct.get_team(building_id) == ct.get_team():
                         self.walking_back_first = False
@@ -333,7 +332,7 @@ class Player:
                 return "__"
             if math.isinf(c):
                 return "██"
-            return f"{c:02d}"
+            return f"{math.ceil(c):02d}"
 
         for row in zip(*self.distance_map):
             print("".join(map_to_string(cell) for cell in row))
