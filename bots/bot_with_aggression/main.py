@@ -245,10 +245,10 @@ class Player:
             if env == Environment.EMPTY and building_id is not None:
                 same_team = ct.get_team(building_id) == ct.get_team()
 
-                marker_value = ct.get_marker_value(building_id)
                 etype = ct.get_entity_type(building_id)
 
                 if etype == EntityType.MARKER and same_team:
+                    marker_value = ct.get_marker_value(building_id)
                     if marker_value == 1 and ct.can_build_sentinel(tile, clamp(self.original_pos, tile)):
                         if (self.bot_type != BOT_TYPE.INITIATORS and ct.get_current_round() >= 50):
                             ct.build_sentinel(tile, clamp(self.original_pos, tile))
