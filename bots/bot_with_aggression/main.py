@@ -411,16 +411,16 @@ class Player:
             self.distance_map = None  # hit a real wall, repath
     
     def build_road(self, ct: Controller, move_pos: Position):
-        print(f"Trying to build road at: {move_pos}")
         direction = clamp(self.original_pos, move_pos)
         if not is_in_bound(move_pos, ct):
             return
-        
-        if ct.get_tile_env(move_pos) != Environment.EMPTY:
+        if (tile_env := ct.get_tile_env(move_pos)) != Environment.EMPTY:
             return
+
+        not_mineable = tile_env not in MINEABLE
         
         if move_pos == self.original_pos.add(direction).add(direction):
-            if (ct.can_build_splitter(move_pos, direction.opposite()) and ct.get_tile_env(move_pos) not in [Environment.ORE_AXIONITE, Environment.ORE_TITANIUM]):
+            if ct.can_build_splitter(move_pos, direction.opposite()) and not_mineable:
                 ct.build_splitter(move_pos, direction.opposite())
                 left_cardinal = direction.rotate_left().rotate_left()
                 right_cardinal = direction.rotate_right().rotate_right()
@@ -433,7 +433,7 @@ class Player:
                 
                 self.bot_type = BOT_TYPE.INITIATORS
         
-        if (ct.can_build_road(move_pos) and ct.get_tile_env(move_pos) not in [Environment.ORE_AXIONITE, Environment.ORE_TITANIUM]):
+        if ct.can_build_road(move_pos) and not_mineable:
             ct.build_road(move_pos)
 
     def aggressor_script(self, ct: Controller):
@@ -446,7 +446,9 @@ class Player:
         
         pos = ct.get_position()
         building_id = ct.get_tile_building_id(pos)
-        if building_id and ct.get_team() != ct.get_team(building_id) and ct.get_entity_type(building_id) != EntityType.ROAD and connected_to_enemy_core(pos, building_id, ct):
+        if (building_id and ct.get_team() != ct.get_team(building_id) and
+                ct.get_entity_type(building_id) != EntityType.ROAD and
+                connected_to_enemy_core(pos, building_id, ct)):
             ct.self_destruct()
             return
 
