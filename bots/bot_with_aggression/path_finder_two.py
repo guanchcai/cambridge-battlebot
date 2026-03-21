@@ -19,7 +19,7 @@ def flood_fill(map: list[list[Environment | None]], target: Position, origin: Po
 
     def is_target_zone(x, y) -> bool:
         dx, dy = x - tx, y - ty
-        return dx*dx + dy*dy < target_distance_squared
+        return dx*dx + dy*dy <= target_distance_squared
 
     def heuristic(x, y) -> float:
         if allow_diagonal:

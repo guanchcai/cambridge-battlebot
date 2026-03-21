@@ -67,7 +67,7 @@ class Player:
         
         if (self.current_target_pos):
             ct.draw_indicator_line(ct.get_position(), self.current_target_pos, 0, 0, 1)
-
+        
         print(f"Bot is currently {self.current_state}")
 
         etype = ct.get_entity_type()
