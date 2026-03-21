@@ -8,6 +8,7 @@ CARDINAL_DIRECTIONS = [Direction.NORTH, Direction.SOUTH, Direction.EAST, Directi
 DIAGONAL_DIRECTIONS = [Direction.NORTHEAST, Direction.NORTHWEST, Direction.SOUTHEAST, Direction.SOUTHWEST]
 PASSABLE = [EntityType.BRIDGE, EntityType.CONVEYOR, EntityType.ROAD, EntityType.ARMOURED_CONVEYOR, EntityType.BUILDER_BOT, EntityType.CORE, EntityType.MARKER, EntityType.SPLITTER]
 VALUABLE_ENEMY_ENTITIES = [EntityType.BRIDGE, EntityType.CORE, EntityType.SENTINEL, EntityType.FOUNDRY, EntityType.GUNNER, EntityType.HARVESTER, EntityType.BREACH]
+MINEABLE = [Environment.ORE_AXIONITE, Environment.ORE_TITANIUM]
 
 DIR_TO_DELTA_DICT = {
     Direction.NORTH: Position(0, -1),

@@ -22,8 +22,8 @@ SYMBOLS = {
 
 class Player:
     def __init__(self):
-        self.num_spawned = 0 # number of builder bots spawned so far (core)
-        self.bomber_spawned = 0 # number of aggressers spawned so far (core)
+        self.num_spawned = 0
+        self.bomber_spawned = 0
         self.spawn_queue = [Direction.NORTHEAST, Direction.SOUTHWEST, Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST]
 
         self.internal_map = None
@@ -76,23 +76,18 @@ class Player:
         if self.current_target_pos:
             ct.draw_indicator_line(position, self.current_target_pos, 0, 0, 1)
 
-        # print(f"Bot is currently {self.current_state}")
-
         etype = ct.get_entity_type()
         match etype:
             case EntityType.CORE:
                 if self.spawn_queue:
-                    # print(self.spawn_queue)
                     direction = self.spawn_queue.pop(0) if self.spawn_queue else random.choice(CARDINAL_DIRECTIONS)
                     spawn_pos = position.add(direction)
                     if ct.can_spawn(spawn_pos):
                         ct.spawn_builder(spawn_pos)
                         self.num_spawned += 1
-                        # print(f"Spawned: {self.num_spawned}")
                         return
-                if ((not self.spawn_queue or current_round >= 100) and
-                        global_resources >= builder_bot_cost + sentinel_cost + 10 and self.num_spawned <= 500):
-                    # print("Boom!")
+                if ((not self.spawn_queue) and current_round >= 100 and
+                    global_resources >= builder_bot_cost + sentinel_cost + 10 and self.num_spawned <= 500):
                     direction = random.choice(DIAGONAL_DIRECTIONS)
                     spawn_pos = ct.get_position().add(direction)
                     if ct.can_spawn(spawn_pos):
@@ -140,8 +135,6 @@ class Player:
                         if not is_in_bound(check_pos, ct):
                             continue
                         check_id = ct.get_tile_building_id(check_pos)
-                        # print(f"Waiting for money... {harvester_cost}/{global_resources}")
-                        # print(ct.get_action_cooldown())
 
                         can_build_h = ct.can_build_harvester(check_pos)
                         if can_build_h or (check_id and ct.get_entity_type(check_id) == EntityType.HARVESTER
@@ -234,7 +227,7 @@ class Player:
             for dx in range(-radius, radius + 1):
                 for dy in range(-radius, radius + 1):
                     if abs(dx) != radius and abs(dy) != radius:
-                        continue  # only check the ring
+                        continue
                     bucket = self.buckets.get((bx + dx, by + dy))
                     if bucket:
                         candidates.extend(bucket)
@@ -249,11 +242,14 @@ class Player:
             env = ct.get_tile_env(tile)
             envp = env
             building_id = ct.get_tile_building_id(tile)
-            if env == Environment.EMPTY and building_id != None:
-                if (ct.get_entity_type(building_id) == EntityType.MARKER and ct.get_team(building_id) == ct.get_team()):
-                    print(tile)
-                    print(ct.get_action_cooldown())
-                    if ct.get_marker_value(building_id) == 1 and ct.can_build_sentinel(tile, clamp(self.original_pos, tile)):
+            if env == Environment.EMPTY and building_id is not None:
+                same_team = ct.get_team(building_id) == ct.get_team()
+
+                marker_value = ct.get_marker_value(building_id)
+                etype = ct.get_entity_type(building_id)
+
+                if etype == EntityType.MARKER and same_team:
+                    if marker_value == 1 and ct.can_build_sentinel(tile, clamp(self.original_pos, tile)):
                         if (self.bot_type != BOT_TYPE.INITIATORS and ct.get_current_round() >= 50):
                             ct.build_sentinel(tile, clamp(self.original_pos, tile))
                         splitter_id = ct.get_tile_building_id(ct.get_position())
@@ -269,21 +265,22 @@ class Player:
                                 ct.place_marker(pos.add(right_cardinal), 1)
                             elif not ct.get_tile_building_id(pos.add(left_cardinal)) and ct.can_place_marker(pos.add(direction.opposite())):
                                 ct.place_marker(pos.add(direction.opposite()), 2)
-                    elif ct.get_marker_value(building_id) == 2 and ct.can_build_barrier(tile):
+                    elif marker_value == 2 and ct.can_build_barrier(tile):
                         ct.build_barrier(tile)
                     env = Environment.WALL
                     envp = env
                 else:
-                    if (ct.get_entity_type(building_id) not in PASSABLE):
+                    if (etype not in PASSABLE) or (etype == EntityType.MARKER and same_team):
                         env = Environment.WALL
                         envp = env
-                    elif (ct.get_entity_type(building_id) == EntityType.MARKER and ct.get_team(building_id) == ct.get_team(building_id)):
+                    # elif etype == EntityType.MARKER and ct.get_team(building_id) == ct.get_team():
+                    #     env = Environment.WALL
+                    #     envp = env
+                    if not same_team:
                         env = Environment.WALL
-                        envp = env
-                    if (ct.get_team(building_id) != ct.get_team()):
-                        env = Environment.WALL
-                        if ct.get_entity_type(building_id) == EntityType.CORE:
+                        if etype == EntityType.CORE:
                             envp = Environment.WALL
+
             self.internal_map[tile.x][tile.y] = env 
             self.internal_walkable_map[tile.x][tile.y] = envp
             if tile in self.unexplored:
@@ -303,43 +300,46 @@ class Player:
             return
         start_time = ct.get_cpu_time_elapsed()
         pos = ct.get_position()
-        print(f"Start time: {start_time}")
 
-        if self.current_state == BOT_STATE.WALKING_BACK and pos.distance_squared(self.current_target_pos) <= self.target_distance_squared:
+        dist_to_target = pos.distance_squared(self.current_target_pos)
+
+        def set_wandering():
             self.current_state = BOT_STATE.WANDERING
             self.current_target_pos = None
             self.previous_target_pos = None
             self.target_distance_squared = 0
             self.distance_map = None
+
+        if ((self.current_state == BOT_STATE.WALKING_BACK and dist_to_target <= self.target_distance_squared) or
+            (abs(pos.x - self.current_target_pos.x) + abs(pos.y - self.current_target_pos.y) <= 1)):
+            set_wandering()
             return
-        elif self.current_state == BOT_STATE.WANDERING and pos.distance_squared(self.current_target_pos) <= ct.get_vision_radius_sq():
-            self.current_target_pos = None
-            self.previous_target_pos = None
-            self.target_distance_squared = 0
-            self.distance_map = None
+        elif self.current_state == BOT_STATE.WANDERING and dist_to_target <= ct.get_vision_radius_sq():
+            set_wandering()
             if self.buckets:
                 self._random_movement(ct)
                 self.move_to_pos(ct)
             return
-        elif abs(pos.x - self.current_target_pos.x) + abs(pos.y - self.current_target_pos.y) <= 1:
-            self.current_state = BOT_STATE.WANDERING
-            self.current_target_pos = None
-            self.previous_target_pos = None
-            self.target_distance_squared = 0
-            self.distance_map = None
-            return
+        # elif abs(pos.x - self.current_target_pos.x) + abs(pos.y - self.current_target_pos.y) <= 1:
+        #     aux()
+        #     return
 
         if self.previous_target_pos != self.current_target_pos or not self.distance_map:
             self.previous_target_pos = self.current_target_pos
-            print("Start filling!")
-            self.distance_map = flood_fill((self.internal_map if self.current_state == BOT_STATE.WALKING_BACK else self.internal_walkable_map), self.current_target_pos, pos, self.target_distance_squared, self.current_state != BOT_STATE.WALKING_BACK)
-            self.print_distance_map()
-            print(f"Fill time: {ct.get_cpu_time_elapsed() - start_time}")
-        
-        print(pos.distance_squared(self.current_target_pos))
-        decisions = [d for d in (CARDINAL_DIRECTIONS if self.current_state == BOT_STATE.WALKING_BACK or max(abs(pos.x - self.current_target_pos.x), abs(pos.y - self.current_target_pos.y)) == 1 else DIRECTIONS) if is_in_bound(pos.add(d), ct)]
+            self.distance_map = flood_fill(
+                (self.internal_map if self.current_state == BOT_STATE.WALKING_BACK else self.internal_walkable_map),
+                self.current_target_pos,
+                pos,
+                self.target_distance_squared,
+                self.current_state != BOT_STATE.WALKING_BACK)
+
+        decisions = [d for d in
+                     (CARDINAL_DIRECTIONS if self.current_state == BOT_STATE.WALKING_BACK or
+                                 max(abs(pos.x - self.current_target_pos.x), abs(pos.y - self.current_target_pos.y)) == 1
+                      else DIRECTIONS)
+                     if is_in_bound(pos.add(d), ct)]
+
         chosen = min(decisions, key=lambda d: get_from_dir(self.distance_map, pos, d))
-        print(f"Chosen direction: {chosen}")
 
         if math.isinf(get_from_dir(self.distance_map, pos, chosen)):
             # This shouldn't happen at all, but as a fail safe:
@@ -355,12 +355,13 @@ class Player:
             if ct.get_global_resources()[0] >= ct.get_conveyor_cost()[0]:
                 if ct.can_destroy(pos):
                     building_id = ct.get_tile_building_id(pos)
-                    if building_id and ct.get_entity_type(building_id) == EntityType.BRIDGE and ct.get_team(building_id) == ct.get_team():
-                        self.walking_back_first = False
+                    self.walking_back_first = False
+                    if (building_id and
+                            ct.get_entity_type(building_id) == EntityType.BRIDGE and
+                            ct.get_team(building_id) == ct.get_team()):
                         return
                     ct.destroy(pos)
                     ct.build_conveyor(pos, chosen)
-                    self.walking_back_first = False
             return
         
         if self.current_state == BOT_STATE.WALKING_BACK:
@@ -371,7 +372,7 @@ class Player:
             next_decisions = [d for d in CARDINAL_DIRECTIONS if is_in_bound(pos.add(chosen).add(d), ct)]
             next_chosen = min(next_decisions, key=lambda d: get_from_dir(self.distance_map, pos.add(chosen), d))
 
-            if ct.can_build_conveyor(move_pos, next_chosen) and ct.get_tile_env(move_pos) not in [Environment.ORE_AXIONITE, Environment.ORE_TITANIUM]:
+            if ct.can_build_conveyor(move_pos, next_chosen) and ct.get_tile_env(move_pos) not in MINEABLE:
                 ct.build_conveyor(move_pos, next_chosen)
             elif ct.can_destroy(move_pos):
                 tile_id = ct.get_tile_building_id(move_pos)
@@ -383,22 +384,18 @@ class Player:
                     ct.get_team(tile_id) == ct.get_team() and
                     ct.get_entity_type(tile_id) == EntityType.BRIDGE
                 ):
-                    self.current_target_pos = None
-                    self.previous_target_pos = None
-                    self.target_distance_squared = 0
-                    self.current_state = BOT_STATE.WANDERING
                     self.walking_back_first = False
-                    self.distance_map = None
+                    set_wandering()
+
                 else:
                     ct.destroy(move_pos)
                     if ct.can_build_conveyor(move_pos, next_chosen):
                         ct.build_conveyor(move_pos, next_chosen)
 
             building_id = ct.get_tile_building_id(move_pos)
-            if ct.can_move(chosen) and not(building_id and ct.get_team(building_id) != ct.get_team()):
+            if ct.can_move(chosen) and not (building_id and ct.get_team(building_id) != ct.get_team()):
                 ct.move(chosen)
             else:
-                print("Oh no i hit a wall")
                 self.walking_back_first = True
                 self.distance_map = None  # force repath, don't abandon target
             return
@@ -406,11 +403,12 @@ class Player:
         self.build_road(ct, move_pos)
         if ct.can_move(chosen):
             ct.move(chosen)
-        elif ct.get_tile_env(move_pos) == Environment.EMPTY and self.current_state != BOT_STATE.WALKING_BACK and check_for_bot(move_pos, ct):
+        elif (ct.get_tile_env(move_pos) == Environment.EMPTY and
+              self.current_state != BOT_STATE.WALKING_BACK and
+              check_for_bot(move_pos, ct)):
             self._pick_random(ct)
         else:
             self.distance_map = None  # hit a real wall, repath
-        print(f"Total time: {ct.get_cpu_time_elapsed() - start_time}")
     
     def build_road(self, ct: Controller, move_pos: Position):
         print(f"Trying to build road at: {move_pos}")
