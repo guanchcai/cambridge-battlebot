@@ -2,10 +2,9 @@ import random
 import math
 from enum import Enum
 from cambc import Controller, Direction, EntityType, Environment, Position
-from sklearn.externals.array_api_compat.cupy.fft import ifft
 
 from path_finder_two import flood_fill
-import time
+
 # non-centre directions
 DIRECTIONS = [d for d in Direction if d != Direction.CENTRE]
 CARDINAL_DIRECTIONS = [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST]
