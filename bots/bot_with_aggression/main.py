@@ -24,7 +24,7 @@ class Player:
     def __init__(self):
         self.num_spawned = 0
         self.bomber_spawned = 0
-        self.spawn_queue = [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.NORTHEAST, Direction.NORTHWEST, Direction.SOUTHEAST]
+        self.spawn_queue = [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.NORTHEAST, Direction.NORTHWEST, Direction.SOUTHEAST, Direction.SOUTHWEST]
 
         self.internal_map = None
         self.internal_walkable_map = None
@@ -81,10 +81,17 @@ class Player:
                 self.current_state = BOT_STATE.GOING_TO_TARGET
                 self.target_distance_squared = 1
                 self.current_target_pos = self.enemy_pos
-
+            
+            # direction_to_self = self.original_pos.direction_to(position)
+            # diag_two_pos = position.add(direction_to_self)
+            # if (
+            #     abs(self.original_pos.x - position.x) + abs(self.original_pos.y - position.y) == 2 and
+            #     ct.can_build_breach(diag_two_pos, direction_to_self)
+            # ):
+            #     ct.build_breach(diag_two_pos, direction_to_self)
             if self.bot_type != BOT_TYPE.AGGRESSOR:
                 d = clamp(self.original_pos, position)
-                self.home_pos = position.add(d)
+                self.home_pos = position
                 self.current_target_pos = position.add(d).add(d)
                 self.current_state = BOT_STATE.GOING_TO_TARGET
                 self.target_distance_squared = 1
@@ -103,11 +110,12 @@ class Player:
         match etype:
             case EntityType.CORE:
                 if self.spawn_queue:
-                    direction = self.spawn_queue.pop(0) if self.spawn_queue else random.choice(CARDINAL_DIRECTIONS)
+                    direction = self.spawn_queue[0] if self.spawn_queue else random.choice(CARDINAL_DIRECTIONS)
                     spawn_pos = position.add(direction)
                     if ct.can_spawn(spawn_pos):
                         ct.spawn_builder(spawn_pos)
                         self.num_spawned += 1
+                        self.spawn_queue.pop(0)
                         return
                 if (
                     not self.spawn_queue and current_round >= 80 and global_resources >= ct.get_foundry_cost()[0] + builder_bot_cost and
@@ -151,6 +159,11 @@ class Player:
                 
                 if candidate and ct.can_fire(candidate[2]):
                     ct.fire(candidate[2])
+            case EntityType.BREACH:
+                for tile in ct.get_nearby_tiles():
+                    if ct.can_fire(tile):
+                        ct.fire(tile)
+                        return
 
             case EntityType.BUILDER_BOT:
                 if not self.internal_map:
@@ -241,10 +254,12 @@ class Player:
     
     def update_map(self, ct: Controller):
         aggression_targets = []
+        position = ct.get_position()
         for tile in ct.get_nearby_tiles():
             env = ct.get_tile_env(tile)
             envp = env
             building_id = ct.get_tile_building_id(tile)
+            bot_id = ct.get_tile_builder_bot_id(tile)
             if building_id and ct.get_entity_type(building_id) == EntityType.CORE and ct.get_team(building_id) != ct.get_team():
                 # Check the enemy core position
                 if ct.get_position(building_id) != self.enemy_pos:
@@ -275,9 +290,8 @@ class Player:
                     if etype == EntityType.CORE:
                         envp = Environment.WALL
                         
-                bot_id = ct.get_tile_builder_bot_id(tile)
                 if (
-                    self.bot_type == BOT_TYPE.AGGRESSOR and bot_id and ct.get_team(bot_id) == ct.get_team() and connected_to_enemy_core(tile, building_id, ct)
+                    self.bot_type == BOT_TYPE.AGGRESSOR and bot_id and ct.get_team(bot_id) == ct.get_team() and not same_team and not self.aggressor_has_target and ct.get_entity_type(building_id) in VALUABLE_ENEMY_ENTITIES
                 ):
                     self.aggressor_has_target = True
                     self.current_state = BOT_STATE.GOING_TO_TARGET
@@ -293,6 +307,10 @@ class Player:
                     connected_to_enemy_core(tile, building_id, ct)
                 ): 
                     aggression_targets.append(tile)
+            if bot_id and self.bot_type == BOT_TYPE.AGGRESSOR and tile != position:
+                env = Environment.WALL
+                envp = Environment.WALL
+
 
             self.internal_map[tile.x][tile.y] = env 
             self.internal_walkable_map[tile.x][tile.y] = envp
@@ -393,6 +411,8 @@ class Player:
                     self.walking_back_first = False
                     if (building_id and
                             (ct.get_entity_type(building_id) == EntityType.BRIDGE and
+                            ct.get_team(building_id) == ct.get_team()) or
+                            (ct.get_entity_type(building_id) == EntityType.SPLITTER and
                             ct.get_team(building_id) == ct.get_team()) or
                             (ct.get_entity_type(building_id) == EntityType.CONVEYOR and
                              ct.get_team(building_id) == ct.get_team() and
@@ -506,7 +526,11 @@ class Player:
             self.aggressor_has_target = False
             return
 
+        building_id = ct.get_tile_building_id(self.current_target_pos) if ct.is_in_vision(self.current_target_pos) else None
         if self.aggressor_has_target and self.current_target_pos == position:
+            if not connected_to_enemy_core(position, building_id, ct):
+                reset_target()
+                return
             for d in DIRECTIONS:
                 check_pos = position.add(d)
                 if not is_in_bound(check_pos, ct):
@@ -515,7 +539,6 @@ class Player:
                 if builder_id and ct.get_team(builder_id) == ct.get_team():
                     ct.self_destruct()
         elif self.aggressor_has_target and ct.is_in_vision(self.current_target_pos):
-            building_id = ct.get_tile_building_id(self.current_target_pos)
             if (
                 building_id is None or 
                 (ct.get_entity_type(building_id) == EntityType.ROAD and ct.get_team(building_id) == ct.get_team())
@@ -589,7 +612,7 @@ class Player:
                     temp_id = ct.get_tile_building_id(position)
                     
                     same_team = temp_id and ct.get_team(temp_id) == ct.get_team()
-                    is_bridge = same_team and ct.get_entity_type(temp_id) == EntityType.BRIDGE
+                    is_bridge = same_team and ct.get_entity_type(temp_id) in [EntityType.BRIDGE, EntityType.SPLITTER]
 
                     if is_bridge or (global_resources >= bridge_cost and action_cooldown == 0):
                         if ct.can_destroy(position):
