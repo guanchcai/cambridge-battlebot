@@ -24,7 +24,7 @@ class Player:
     def __init__(self):
         self.num_spawned = 0
         self.bomber_spawned = 0
-        self.spawn_queue = [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.NORTHEAST, Direction.NORTHWEST, Direction.SOUTHEAST, Direction.SOUTHWEST]
+        self.spawn_queue = [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.NORTHEAST, Direction.NORTHWEST]
 
         self.internal_map = None
         self.internal_walkable_map = None
@@ -118,14 +118,10 @@ class Player:
                         self.spawn_queue.pop(0)
                         return
                 if (
-                    not self.spawn_queue and current_round >= 80 and global_resources >= ct.get_foundry_cost()[0] + builder_bot_cost and
+                    not self.spawn_queue and current_round >= 80 and
                     (
                         ct.get_current_round() >= 400 or # Go ham
-                        global_resources >= max(
-                            builder_bot_cost + road_cost * self.num_spawned,
-                            builder_bot_cost + sentinel_cost,
-                            harvester_cost * 2,
-                        )
+                        global_resources >= harvester_cost * 1.5
                     )
                     and self.num_spawned <= 500
                 ):
@@ -220,7 +216,7 @@ class Player:
         move_pos = ct.get_position().add(move_dir)
         if not is_in_bound(move_pos, ct):
             return
-        self.build_road(ct, move_pos)
+        self._build_road(ct, move_pos)
         if ct.can_move(move_dir):
             ct.move(move_dir)
             pos = ct.get_position()
@@ -304,7 +300,9 @@ class Player:
                 if (
                     self.bot_type == BOT_TYPE.AGGRESSOR and 
                     not self.aggressor_has_target and 
-                    connected_to_enemy_core(tile, building_id, ct)
+                    connected_to_enemy_core(tile, building_id, ct) and
+                    ct.get_stored_resource(building_id) and
+                    bot_id is None
                 ): 
                     aggression_targets.append(tile)
             if bot_id and self.bot_type == BOT_TYPE.AGGRESSOR and tile != position:
@@ -458,14 +456,9 @@ class Player:
                 self.distance_map = None  # force repath, don't abandon target
             return
 
-        self.build_road(ct, move_pos)
+        self._build_road(ct, move_pos)
         if ct.can_move(chosen):
             ct.move(chosen)
-            if self.bot_type == BOT_TYPE.AGGRESSOR:
-                building_id = ct.get_tile_building_id(pos)
-                if building_id and ct.get_entity_type(building_id) == EntityType.ROAD:
-                    if ct.can_destroy(pos) and ct.get_current_round() <= 200:
-                        ct.destroy(pos)
         elif (ct.get_tile_env(move_pos) == Environment.EMPTY and
               self.current_state != BOT_STATE.WALKING_BACK and
               ct.get_tile_builder_bot_id(move_pos)):
@@ -473,7 +466,7 @@ class Player:
         else:
             self.distance_map = None  # hit a real wall, repath
     
-    def build_road(self, ct: Controller, move_pos: Position):
+    def _build_road(self, ct: Controller, move_pos: Position):
         direction = clamp(self.original_pos, move_pos)
         if not is_in_bound(move_pos, ct):
             return
@@ -524,7 +517,7 @@ class Player:
             self.current_state = BOT_STATE.GOING_TO_TARGET
             self.distance_map = None
             self.aggressor_has_target = False
-            return
+            return True
 
         building_id = ct.get_tile_building_id(self.current_target_pos) if ct.is_in_vision(self.current_target_pos) else None
         if self.aggressor_has_target and self.current_target_pos == position:
@@ -536,7 +529,7 @@ class Player:
                 if not is_in_bound(check_pos, ct):
                     continue
                 builder_id = ct.get_tile_builder_bot_id(check_pos)
-                if builder_id and ct.get_team(builder_id) == ct.get_team():
+                if builder_id and ct.get_team(builder_id) == ct.get_team() and ct.get_global_resources()[0] >= ct.get_sentinel_cost()[0]:
                     ct.self_destruct()
         elif self.aggressor_has_target and ct.is_in_vision(self.current_target_pos):
             if (
