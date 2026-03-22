@@ -3,12 +3,13 @@ import math
 from cambc import Controller, Direction, EntityType, Environment, Position
 
 # non-centre directions
-DIRECTIONS = [d for d in Direction if d != Direction.CENTRE]
+DIRECTIONS = [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.NORTHEAST, Direction.NORTHWEST, Direction.SOUTHEAST, Direction.SOUTHWEST]
 CARDINAL_DIRECTIONS = [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST]
 DIAGONAL_DIRECTIONS = [Direction.NORTHEAST, Direction.NORTHWEST, Direction.SOUTHEAST, Direction.SOUTHWEST]
 PASSABLE = [EntityType.BRIDGE, EntityType.CONVEYOR, EntityType.ROAD, EntityType.ARMOURED_CONVEYOR, EntityType.BUILDER_BOT, EntityType.CORE, EntityType.MARKER, EntityType.SPLITTER]
-VALUABLE_ENEMY_ENTITIES = [EntityType.BRIDGE, EntityType.CORE, EntityType.SENTINEL, EntityType.FOUNDRY, EntityType.GUNNER, EntityType.HARVESTER, EntityType.BREACH]
+VALUABLE_ENEMY_ENTITIES = [EntityType.BRIDGE, EntityType.FOUNDRY, EntityType.BUILDER_BOT, EntityType.CORE, EntityType.GUNNER, EntityType.SENTINEL]
 MINEABLE = [Environment.ORE_AXIONITE, Environment.ORE_TITANIUM]
+STUCK_THRESHHOLD = 3
 
 DIR_TO_DELTA_DICT = {
     Direction.NORTH: Position(0, -1),
@@ -25,7 +26,7 @@ def is_in_bound(pos: Position, ct: Controller):
 def get_from_dir(map: list[list], pos: Position, dir: Direction):
     p1 = pos.add(dir)
     val = map[p1.x][p1.y]
-    return val or math.inf
+    return val if val is not None else math.inf
 
 
 def min_with_random_tiebreak(iterable, key=(lambda x: x)):
@@ -85,8 +86,9 @@ def find_core_center(ct: Controller) -> Position | None:
 
 
 def connected_to_enemy_core(pos: Position, building_id: int, ct: Controller):
-    if not is_in_bound(pos, ct): return False
-    try:
+    try: 
+        if not is_in_bound(pos, ct): return False
+        if ct.get_team(building_id) == ct.get_team(): return False
         etype = ct.get_entity_type(building_id)
 
         match etype:
@@ -94,34 +96,23 @@ def connected_to_enemy_core(pos: Position, building_id: int, ct: Controller):
                 check_pos = pos.add(ct.get_direction(building_id))
                 check_id = ct.get_tile_building_id(check_pos)
                 return check_pos and (
-                        ct.get_entity_type(check_id) in VALUABLE_ENEMY_ENTITIES or
+                        ct.get_entity_type(check_id) == EntityType.CORE or
                         connected_to_enemy_core(check_pos,check_id,ct))
 
             case EntityType.BRIDGE:
                 check_pos = ct.get_bridge_target(building_id)
                 check_id = ct.get_tile_building_id(check_pos)
                 return check_pos and (
-                        ct.get_entity_type(check_id) in VALUABLE_ENEMY_ENTITIES or
+                        ct.get_entity_type(check_id) == EntityType.CORE or
                         connected_to_enemy_core(check_pos,check_id,ct))
 
             case EntityType.SPLITTER:
                 back_facing = ct.get_direction(building_id).opposite()
                 check_positions = [pos.add(d) for d in CARDINAL_DIRECTIONS if d != back_facing]
                 return check_positions and any(
-                    [ct.get_entity_type(ct.get_tile_building_id(p)) in VALUABLE_ENEMY_ENTITIES
+                    [ct.get_entity_type(ct.get_tile_building_id(p)) == EntityType.CORE
                      for p in check_positions])
-
-            case _:
-                return False
-
     except Exception:
-        return False
-
-
-def check_for_bot(target_pos: Position, ct: Controller):
-    for ent_id in ct.get_nearby_entities():
-        if ct.get_entity_type(ent_id) == EntityType.BUILDER_BOT and ct.get_position(ent_id) == target_pos:
-            # Another bot is blocking
-            return True
-
+        pass
     return False
+

@@ -51,6 +51,8 @@ class Player:
                 
             if ct.can_move(move_dir):
                 ct.move(move_dir)
+            else:
+                ct.self_destruct()
             
             self.timer += 1
 

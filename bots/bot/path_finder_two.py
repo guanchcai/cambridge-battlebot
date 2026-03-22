@@ -5,7 +5,7 @@ from cambc import Position, Environment, Direction
 CARDINAL_DELTAS = [(0, 1), (0, -1), (1, 0), (-1, 0)]
 ALL_DIRECTION_DELTAS = [(0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (-1, -1), (1, -1), (-1, 1)]
 
-def flood_fill(map: list[list[Environment | None]], target: Position, origin: Position, target_distance_squared=0, allow_diagonal=False):
+def flood_fill(map: list[list[Environment | None]], target: Position, origin: Position, target_distance_squared=0, allow_diagonal=False, bypass_wall=False):
     width = len(map)
     height = len(map[0])
     distance_map = [[None] * height for _ in range(width)]
@@ -47,7 +47,7 @@ def flood_fill(map: list[list[Environment | None]], target: Position, origin: Po
             if distance_map[nx][ny] is not None:
                 continue
 
-            if map[nx][ny] in WALL_TYPES and not is_target_zone(nx, ny):
+            if map[nx][ny] in WALL_TYPES and not (bypass_wall and is_target_zone(nx, ny)):
                 distance_map[nx][ny] = math.inf
                 continue
 
