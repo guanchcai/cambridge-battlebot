@@ -9,6 +9,7 @@ DIAGONAL_DIRECTIONS = [Direction.NORTHEAST, Direction.NORTHWEST, Direction.SOUTH
 PASSABLE = [EntityType.BRIDGE, EntityType.CONVEYOR, EntityType.ROAD, EntityType.ARMOURED_CONVEYOR, EntityType.BUILDER_BOT, EntityType.CORE, EntityType.MARKER, EntityType.SPLITTER]
 VALUABLE_ENEMY_ENTITIES = [EntityType.CONVEYOR, EntityType.ARMOURED_CONVEYOR, EntityType.SPLITTER, EntityType.BRIDGE, EntityType.FOUNDRY, EntityType.BUILDER_BOT, EntityType.CORE, EntityType.GUNNER, EntityType.SENTINEL]
 MINEABLE = [Environment.ORE_AXIONITE, Environment.ORE_TITANIUM]
+CONVEYORS = {EntityType.BRIDGE, EntityType.CONVEYOR, EntityType.ARMOURED_CONVEYOR, EntityType.SPLITTER}
 STUCK_THRESHHOLD = 3
 
 DIR_TO_DELTA_DICT = {
@@ -85,34 +86,38 @@ def find_core_center(ct: Controller) -> Position | None:
     return None
 
 
-def connected_to_enemy_core(pos: Position, building_id: int, ct: Controller):
+def connected_to(pos: Position, building_id: int, target_building: EntityType, other_team: bool, ct: Controller):
     try: 
         if not is_in_bound(pos, ct): return False
-        if ct.get_team(building_id) == ct.get_team(): return False
         etype = ct.get_entity_type(building_id)
 
         match etype:
             case EntityType.CONVEYOR | EntityType.ARMOURED_CONVEYOR:
                 check_pos = pos.add(ct.get_direction(building_id))
                 check_id = ct.get_tile_building_id(check_pos)
-                return check_pos and (
-                        ct.get_entity_type(check_id) == EntityType.CORE or
-                        connected_to_enemy_core(check_pos,check_id,ct))
+                return check_id and (
+                        (ct.get_entity_type(check_id) == target_building and (ct.get_team(check_id) != ct.get_team()) == other_team) or
+                        connected_to(check_pos, check_id, target_building, other_team, ct))
 
             case EntityType.BRIDGE:
                 check_pos = ct.get_bridge_target(building_id)
                 check_id = ct.get_tile_building_id(check_pos)
-                return check_pos and (
-                        ct.get_entity_type(check_id) == EntityType.CORE or
-                        connected_to_enemy_core(check_pos,check_id,ct))
+                return check_id and (
+                        (ct.get_entity_type(check_id) == target_building and (ct.get_team(check_id) != ct.get_team()) == other_team) or
+                        connected_to(check_pos, check_id, target_building, other_team, ct))
 
             case EntityType.SPLITTER:
-                back_facing = ct.get_direction(building_id).opposite()
-                check_positions = [pos.add(d) for d in CARDINAL_DIRECTIONS if d != back_facing]
-                return check_positions and any(
-                    [ct.get_entity_type(ct.get_tile_building_id(p)) == EntityType.CORE
-                     for p in check_positions])
+                check_positions = [pos.add(d) for d in CARDINAL_DIRECTIONS]
+                tile_buildings = [ct.get_tile_building_id(p) for p in check_positions]
+                for building_id in tile_buildings:
+                    if building_id and (ct.get_entity_type(building_id) == target_building and (ct.get_team(building_id) != ct.get_team()) == other_team):
+                        return True
     except Exception:
         pass
     return False
 
+def limit(p: Position, ct: Controller):
+    return Position(
+        max(0, min(p.x, ct.get_map_width() - 1)),
+        max(0, min(p.y, ct.get_map_height() - 1))
+    )
