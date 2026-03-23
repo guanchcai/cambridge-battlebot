@@ -105,10 +105,10 @@ class Player:
         if self.current_target_pos:
             ct.draw_indicator_line(position, self.current_target_pos, 0, 0, 1)
         
-        print(f"Bot of type {self.bot_type} is currently {self.current_state}")
-
-        if self.aggressor_has_target:
-            print(f"Targetted: {self.current_target_pos}")
+        # print(f"Bot of type {self.bot_type} is currently {self.current_state}")
+        #
+        # if self.aggressor_has_target:
+        #     print(f"Targetted: {self.current_target_pos}")
 
         etype = ct.get_entity_type()
         match etype:
@@ -195,7 +195,7 @@ class Player:
                             return
                 # Move randomly
                 if not self.current_target_pos and self.bot_type == BOT_TYPE.INITIATORS:
-                    print("Picking random place!")
+                    # print("Picking random place!")
                     self._random_movement(ct)
 
                 if self.current_target_pos:
@@ -212,7 +212,7 @@ class Player:
             return
         pos = ct.get_position()
         if self.current_target_pos:
-            if (self.internal_map[self.current_target_pos.x][self.current_target_pos.y] != None):
+            if self.internal_map[self.current_target_pos.x][self.current_target_pos.y] is not None:
                 self.current_target_pos = self._nearest_unexplored(pos)
         else:
             self.current_target_pos = self._nearest_unexplored(pos)
@@ -223,7 +223,7 @@ class Player:
     def _pick_random(self, ct: Controller):
         if self.bot_type != BOT_TYPE.INITIATORS:
             return
-        print("Picking random!")
+        # print("Picking random!")
         move_dir = random.choice(DIRECTIONS)
         move_pos = ct.get_position().add(move_dir)
         if not is_in_bound(move_pos, ct):
@@ -242,8 +242,8 @@ class Player:
             if not self.buckets:
                 return None
             candidates = []
-            for dx in range(-radius, radius + 1):
-                for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius+1):
+                for dy in range(-radius, radius+1):
                     if abs(dx) != radius and abs(dy) != radius:
                         continue
                     bucket = self.buckets.get((bx + dx, by + dy))
@@ -299,8 +299,8 @@ class Player:
                     bot_id != ct.get_id() and 
                     ct.get_team(bot_id) == ct.get_team() and 
                     not same_team and 
-                    not self.aggressor_has_target 
-                    and ct.get_entity_type(building_id) in VALUABLE_ENEMY_ENTITIES
+                    not self.aggressor_has_target and
+                    ct.get_entity_type(building_id) in VALUABLE_ENEMY_ENTITIES
                 ):
                     self.current_state = BOT_STATE.GOING_TO_TARGET
                     self.distance_map = None
@@ -331,7 +331,7 @@ class Player:
                 self.buckets[bucket].remove(tile)
                 if not self.buckets[bucket]:
                     del self.buckets[bucket]  # prune empty buckets
-            if env in [Environment.ORE_TITANIUM, Environment.ORE_AXIONITE]:
+            if env in MINEABLE:
                 self.ore_sites.add(tile)
                 # temp_id = ct.get_tile_building_id(tile)
                 # if temp_id and ct.get_team(temp_id) == ct.get_team():
@@ -347,7 +347,7 @@ class Player:
     def move_to_pos(self, ct: Controller):
         if not self.current_target_pos:
             return
-        start_time = ct.get_cpu_time_elapsed()
+        # start_time = ct.get_cpu_time_elapsed()
         pos = ct.get_position()
 
         dist_to_target = pos.distance_squared(self.current_target_pos)
@@ -410,6 +410,7 @@ class Player:
         if math.isinf(get_from_dir(self.distance_map, pos, chosen)):
             # This shouldn't happen at all, but as a fail safe:
             print("Please fix")
+            # TODO FIX
             self.distance_map = None
             self.previous_target_pos = None
             self.current_target_pos = None
@@ -430,15 +431,18 @@ class Player:
                 if ct.can_destroy(pos):
                     building_id = ct.get_tile_building_id(pos)
                     self.walking_back_first = False
-                    if (building_id and
-                            (ct.get_entity_type(building_id) == EntityType.BRIDGE and
-                            ct.get_team(building_id) == ct.get_team()) or
-                            (ct.get_entity_type(building_id) == EntityType.SPLITTER and
-                            ct.get_team(building_id) == ct.get_team()) or
-                            (ct.get_entity_type(building_id) == EntityType.CONVEYOR and
-                             ct.get_team(building_id) == ct.get_team() and
-                             ct.get_direction(building_id) == chosen)):
-                        return
+                    etype = ct.get_entity_type(building_id)
+                    building_team = ct.get_team(building_id)
+                    same_team = building_team == ct.get_team()
+                    # if (building_id and (etype == EntityType.BRIDGE and same_team) or
+                    #                     (etype == EntityType.SPLITTER and same_team) or
+                    #                     (etype == EntityType.CONVEYOR and same_team and
+                    #                      ct.get_direction(building_id) == chosen)
+                    # ):
+                    if (building_id and same_team and
+                            (etype == EntityType.BRIDGE or etype == EntityType.SPLITTER or
+                            (etype == EntityType.CONVEYOR and ct.get_direction(building_id) == chosen))
+                    ): return
                     ct.destroy(pos)
                     ct.build_conveyor(pos, chosen)
             return
@@ -571,13 +575,9 @@ class Player:
                     reset_target()
                 else:
                     return True
-            elif ct.get_team(building_id) == ct.get_team():
-                reset_target()
-            elif ct.get_team(building_id) != ct.get_team() and ct.get_tile_builder_bot_id(self.current_target_pos) is None:
+            elif ct.get_team(building_id) == ct.get_team() or ct.get_tile_builder_bot_id(self.current_target_pos) is None:
                 reset_target()
 
-        
-        
     def initiator_script(self, ct: Controller):
         position = ct.get_position()
         global_resources = ct.get_global_resources()[0]
@@ -599,7 +599,7 @@ class Player:
                 env = ct.get_tile_env(check_pos)
                 building_id = ct.get_tile_building_id(check_pos)
                 
-                if (can_build_h or (building_id and ct.get_entity_type(building_id) == EntityType.HARVESTER)) and env in [Environment.ORE_AXIONITE, Environment.ORE_TITANIUM]:
+                if (can_build_h or (building_id and ct.get_entity_type(building_id) == EntityType.HARVESTER)) and env in MINEABLE:
                     if check_pos in self.visited_ores:
                         continue
 
@@ -617,11 +617,12 @@ class Player:
         if self.current_state == BOT_STATE.WALKING_BACK:
             if position.distance_squared(self.original_pos) <= 49:
                 buildings_nearby = ct.get_nearby_buildings(9)
+                team = ct.get_team()
                 bridges_nearby = [
                     b for b in buildings_nearby if
                     ct.get_entity_type(b) == EntityType.SPLITTER and
                     ct.get_position(b).distance_squared(self.original_pos) <= 16 and
-                    ct.get_team(b) == ct.get_team()
+                    ct.get_team(b) == team
                 ]
 
                 # We are close enough to the base
@@ -653,13 +654,15 @@ class Player:
                 self.target_distance_squared = 1 # One includes all adjacent squares
                 self.current_state = BOT_STATE.GOING_TO_TARGET
                 self.distance_map = None
+        return None
 
     def repair_script(self, ct: Controller):
         if self.current_target_pos and ct.is_in_vision(self.current_target_pos):
             if ct.can_destroy(self.current_target_pos) and ct.get_entity_type(ct.get_tile_building_id(self.current_target_pos)) != EntityType.SPLITTER:
                 ct.destroy(self.current_target_pos)
-            if ct.can_build_splitter(self.current_target_pos, self.current_target_pos.direction_to(self.original_pos)):
-                ct.build_splitter(self.current_target_pos, self.current_target_pos.direction_to(self.original_pos))
+            if ct.can_build_splitter(self.current_target_pos,
+                                     dir_to_original := self.current_target_pos.direction_to(self.original_pos)):
+                ct.build_splitter(self.current_target_pos, dir_to_original)
             
         for check_dir in CARDINAL_DIRECTIONS:
             check_pos = self.original_pos.add(check_dir).add(check_dir)
