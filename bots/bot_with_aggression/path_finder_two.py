@@ -5,7 +5,7 @@ from cambc import Position, Environment, Direction
 CARDINAL_DELTAS = [(0, 1), (0, -1), (1, 0), (-1, 0)]
 ALL_DIRECTION_DELTAS = [(0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (-1, -1), (1, -1), (-1, 1)]
 
-def flood_fill(map: list[list[Environment | None]], target: Position, origin: Position, target_distance_squared=0, allow_diagonal=False, bypass_wall=False):
+def flood_fill(map: list[list[Environment | None]], target: Position, origin: Position, ignore_ores, target_distance_squared=0, allow_diagonal=False, bypass_wall=False):
     width = len(map)
     height = len(map[0])
     distance_map = [[None] * height for _ in range(width)]
@@ -30,7 +30,7 @@ def flood_fill(map: list[list[Environment | None]], target: Position, origin: Po
     distance_map[tx][ty] = 0
     open_set = [(heuristic(tx, ty), tx, ty)]
 
-    WALL_TYPES = (Environment.WALL, Environment.ORE_AXIONITE, Environment.ORE_TITANIUM)
+    WALL_TYPES = (Environment.WALL, Environment.ORE_AXIONITE, Environment.ORE_TITANIUM) if not ignore_ores else [Environment.WALL]
 
     while open_set:
         _, cx, cy = heapq.heappop(open_set)
