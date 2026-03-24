@@ -61,6 +61,7 @@ class Player:
         position = ct.get_position()
         current_round = ct.get_current_round()
         harvester_cost = ct.get_harvester_cost()[0]
+        global_resources = ct.get_global_resources()[0]
         if not self.original_pos:
             core_center = ct.get_position(ct.get_tile_building_id(position))
             self.original_pos = core_center or position
