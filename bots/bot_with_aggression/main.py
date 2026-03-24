@@ -107,10 +107,8 @@ class Player:
             ct.draw_indicator_line(position, self.current_target_pos, 0, 0, 1)
             print(f"Current target: {self.current_target_pos}")
         
-        # print(f"Bot of type {self.bot_type} is currently {self.current_state}")
-        #
-        # if self.aggressor_has_target:
-        #     print(f"Targetted: {self.current_target_pos}")
+        # Pretty important debug and minimal impact pls don't comment
+        print(f"Bot of type {self.bot_type} is currently {self.current_state}")
 
         etype = ct.get_entity_type()
         match etype:
@@ -225,7 +223,7 @@ class Player:
     def _pick_random(self, ct: Controller):
         print("Picking random!")
         pos = ct.get_position()
-        move_dir = random.choice([d for d in DIRECTIONS if ct.is_tile_passable(pos.add(d)) or ct.is_tile_empty(pos.add(d))])
+        move_dir = random.choice([d for d in DIRECTIONS if ct.is_in_vision(pos.add(d)) and is_in_bound(pos.add(d), ct) and (ct.is_tile_passable(pos.add(d)) or ct.is_tile_empty(pos.add(d)))])
         move_pos = pos.add(move_dir)
         if not is_in_bound(move_pos, ct):
             return
@@ -421,7 +419,6 @@ class Player:
                      if is_in_bound(pos.add(d), ct)]
         
         chosen = min(decisions, key=lambda d: get_from_dir(self.distance_map, pos, d))
-
         if math.isinf(get_from_dir(self.distance_map, pos, chosen)):
             # This shouldn't happen at all, but as a fail safe:
             print("Please fix")
@@ -499,7 +496,7 @@ class Player:
                 self.walking_back_first = True
                 self.distance_map = None  # force repath, don't abandon target
             return
-
+        print(move_pos)
         self._build_road(ct, move_pos)
         if ct.can_move(chosen):
             ct.move(chosen)
@@ -514,30 +511,19 @@ class Player:
         direction = clamp(self.original_pos, move_pos)
         if not is_in_bound(move_pos, ct):
             return
-        if (tile_env := ct.get_tile_env(move_pos)) != Environment.EMPTY:
-            return
+        tile_env = ct.get_tile_env(move_pos)
 
         not_mineable = tile_env not in MINEABLE
+        print(f"Trying to build road at {move_pos}")
         
         if self.bot_type != BOT_TYPE.AGGRESSOR and move_pos == self.original_pos.add(direction).add(direction):
             if ct.can_destroy(move_pos) and ct.get_entity_type(ct.get_tile_building_id(move_pos)) == EntityType.ROAD:
                 ct.destroy(move_pos)
             if ct.can_build_splitter(move_pos, direction.opposite()) and not_mineable:
                 ct.build_splitter(move_pos, direction.opposite())
-                left_cardinal = direction.rotate_left().rotate_left()
-                right_cardinal = direction.rotate_right().rotate_right()
-
-                if ct.can_place_marker(move_pos.add(left_cardinal)):
-                    ct.place_marker(move_pos.add(left_cardinal), 1)
-                
-                if ct.can_place_marker(move_pos.add(right_cardinal)):
-                    ct.place_marker(move_pos.add(right_cardinal), 1)
-                
-                self.bot_type = BOT_TYPE.INITIATORS
         
         if (
             ct.can_build_road(move_pos) and 
-            not_mineable and 
             self.internal_walkable_map[move_pos.x][move_pos.y] != Environment.WALL
         ):
             ct.build_road(move_pos)
@@ -643,8 +629,8 @@ class Player:
                 env = ct.get_tile_env(check_pos)
 
                 if env in MINEABLE:
-                    
-                    self.visited_ores.add(check_pos)
+                    if check_pos in self.visited_ores:
+                        continue
                     building_id = ct.get_tile_building_id(check_pos)
 
                     if building_id and ct.get_entity_type(building_id) == EntityType.ROAD:
@@ -653,10 +639,8 @@ class Player:
 
                     can_build_h = ct.can_build_harvester(check_pos)
                     building_id = ct.get_tile_building_id(check_pos)
-                    
+                    self.visited_ores.add(check_pos)
                     if (can_build_h or (building_id and ct.get_entity_type(building_id) == EntityType.HARVESTER)):
-                        if check_pos in self.visited_ores:
-                            continue
 
                         if can_build_h:
                             ct.build_harvester(check_pos)
