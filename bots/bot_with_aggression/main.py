@@ -566,12 +566,10 @@ class Player:
             ):
                 if ct.can_destroy(self.current_target_pos):
                     ct.destroy(self.current_target_pos)
-                
-                build_sentinel(self.current_target_pos, point_dir)
 
                 if position == self.current_target_pos:
                     self._pick_random(ct)
-                    build_sentinel(self.current_target_pos, point_dir)
+                build_sentinel(self.current_target_pos, point_dir)
             
 
     def initiator_script(self, ct: Controller):
