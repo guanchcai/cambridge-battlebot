@@ -30,7 +30,7 @@ def flood_fill(map: list[list[Environment | None]], target: Position, origin: Po
     distance_map[tx][ty] = 0
     open_set = [(heuristic(tx, ty), tx, ty)]
 
-    WALL_TYPES = (Environment.WALL, Environment.ORE_AXIONITE, Environment.ORE_TITANIUM) if not ignore_ores else [Environment.WALL]
+    WALL_TYPES = set([Environment.WALL, Environment.ORE_AXIONITE, Environment.ORE_TITANIUM]) if not ignore_ores else set([Environment.WALL])
 
     while open_set:
         _, cx, cy = heapq.heappop(open_set)
@@ -63,13 +63,6 @@ def flood_fill(map: list[list[Environment | None]], target: Position, origin: Po
                 heapq.heappush(open_set, (new_g + heuristic(nx, ny), nx, ny))
 
     return distance_map
-
-def get_adjacent(p: Position, w: int, h: int, allow_diags: bool):
-    return [
-        Position(p.x + dx, p.y + dy)
-        for dx, dy in (CARDINAL_DELTAS if not allow_diags else ALL_DIRECTION_DELTAS)
-        if is_in_bound(p.x + dx, p.y + dy)
-    ]
 
 def is_in_bound(x: int, y: int, w: int, h: int):
     return 0 <= x < w and 0 <= y < h

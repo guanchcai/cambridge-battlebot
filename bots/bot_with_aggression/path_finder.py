@@ -2,11 +2,14 @@ from cambc import Position, Environment, Controller, Direction
 from collections import deque
 import random
 import math
+from array import array
 
 def flood_fill(map: list[list[Environment | None]], target: Position, origin: Position, target_distance_squared = 0):
     width = len(map)
     height = len(map[0])
     distance_map = [[None] * height for _ in range(width)]
+    visited = bytearray(width * height)  # all False by default
+    dist = array('i', [0] * (width * height)) 
 
     distance_map[target.x][target.y] = 0
     q = deque([target])
