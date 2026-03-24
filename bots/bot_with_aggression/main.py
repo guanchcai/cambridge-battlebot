@@ -60,15 +60,7 @@ class Player:
         map_width = ct.get_map_width()
         position = ct.get_position()
         current_round = ct.get_current_round()
-        global_resources = ct.get_global_resources()[0]
-        builder_bot_cost = ct.get_builder_bot_cost()[0]
-        sentinel_cost = ct.get_sentinel_cost()[0]
         harvester_cost = ct.get_harvester_cost()[0]
-        road_cost = ct.get_road_cost()[0]
-        bridge_cost = ct.get_bridge_cost()[0]
-        action_cooldown = ct.get_action_cooldown()
-        # if current_round >= 500:
-        #     return
         if not self.original_pos:
             core_center = ct.get_position(ct.get_tile_building_id(position))
             self.original_pos = core_center or position
@@ -86,14 +78,6 @@ class Player:
                 self.current_state = BOT_STATE.WANDERING
                 self.target_distance_squared = 1
                 self.current_target_pos = self.enemy_pos
-            
-            # direction_to_self = self.original_pos.direction_to(position)
-            # diag_two_pos = position.add(direction_to_self)
-            # if (
-            #     abs(self.original_pos.x - position.x) + abs(self.original_pos.y - position.y) == 2 and
-            #     ct.can_build_breach(diag_two_pos, direction_to_self)
-            # ):
-            #     ct.build_breach(diag_two_pos, direction_to_self)
             if self.bot_type == BOT_TYPE.INITIATORS:
                 d = clamp(self.original_pos, position)
                 self.home_pos = position
@@ -291,22 +275,6 @@ class Player:
                     env = Environment.WALL
                     if etype == EntityType.CORE:
                         envp = Environment.WALL
-                # if (
-                #     not is_a_bitch and
-                #     self.bot_type == BOT_TYPE.AGGRESSOR and 
-                #     bot_id and 
-                #     bot_id != ct.get_id() and 
-                #     ct.get_team(bot_id) == ct.get_team() and 
-                #     not same_team and 
-                #     not self.aggressor_has_target 
-                #     and ct.get_entity_type(building_id) in VALUABLE_ENEMY_ENTITIES
-                # ):
-                #     self.current_state = BOT_STATE.GOING_TO_TARGET
-                #     self.distance_map = None
-                #     self.current_target_pos = tile
-                #     self.previous_target_pos = None
-                #     self.target_distance_squared = 1
-                    
 
                 if (
                     self.bot_type == BOT_TYPE.AGGRESSOR and 
@@ -344,9 +312,6 @@ class Player:
                     del self.buckets[bucket]  # prune empty buckets
             if env in MINEABLE:
                 self.ore_sites.add(tile)
-                # temp_id = ct.get_tile_building_id(tile)
-                # if temp_id and ct.get_team(temp_id) == ct.get_team():
-                #     self.visited_ores.add(tile)
         print(aggression_targets)
         if aggression_targets and not self.aggressor_has_target and self.current_state != BOT_STATE.GOING_TO_TARGET:
             self.current_state = BOT_STATE.GOING_TO_TARGET
@@ -392,9 +357,6 @@ class Player:
             case BOT_TYPE.REPAIR:
                 if dist_to_target <= self.target_distance_squared:
                     return
-        # elif abs(pos.x - self.current_target_pos.x) + abs(pos.y - self.current_target_pos.y) <= 1:
-        #     aux()
-        #     return
         
         if self.stuck_counter >= STUCK_THRESHHOLD:
             set_wandering()
@@ -420,7 +382,7 @@ class Player:
         
         chosen = min(decisions, key=lambda d: get_from_dir(self.distance_map, pos, d))
         if math.isinf(get_from_dir(self.distance_map, pos, chosen)):
-            # This shouldn't happen at all, but as a fail safe:
+            # This shouldn't happen at all, but as a fail-safe:
             print("Please fix")
             # TODO FIX
             self.distance_map = None
@@ -448,11 +410,6 @@ class Player:
                     etype = ct.get_entity_type(building_id)
                     building_team = ct.get_team(building_id)
                     same_team = building_team == ct.get_team()
-                    # if (building_id and (etype == EntityType.BRIDGE and same_team) or
-                    #                     (etype == EntityType.SPLITTER and same_team) or
-                    #                     (etype == EntityType.CONVEYOR and same_team and
-                    #                      ct.get_direction(building_id) == chosen)
-                    # ):
                     if (building_id and same_team and
                             (etype == EntityType.BRIDGE or etype == EntityType.SPLITTER or
                             (etype == EntityType.CONVEYOR and ct.get_direction(building_id) == chosen))
@@ -588,27 +545,6 @@ class Player:
                         if not ct.get_tile_building_id(position):
                             # We have destroyed the target
                             self._pick_random(ct)
-                    
-        # elif self.current_state == BOT_STATE.GOING_TO_TARGET and ct.is_in_vision(self.current_target_pos):
-        #     if (
-        #         building_id is None or 
-        #         (ct.get_entity_type(building_id) == EntityType.ROAD and ct.get_team(building_id) == ct.get_team())
-        #     ):
-        #         if ct.can_destroy(self.current_target_pos) and ct.get_entity_type(building_id) == EntityType.ROAD:
-        #             ct.destroy(self.current_target_pos)
-        #         dist = abs(self.current_target_pos.x - self.enemy_pos.x) + abs(self.current_target_pos.y - self.enemy_pos.y)
-        #         if dist <= 2 and ct.can_build_gunner(self.current_target_pos, point_dir):
-        #             ct.build_gunner(self.current_target_pos, point_dir)
-        #             reset_target()
-        #         elif ct.can_build_sentinel(self.current_target_pos, point_dir):
-        #             ct.build_sentinel(self.current_target_pos, point_dir)
-        #             reset_target()
-        #         else:
-        #             return True
-        #     elif ct.get_team(building_id) == ct.get_team():
-        #         reset_target()
-        #     elif ct.get_team(building_id) != ct.get_team() and ct.get_tile_builder_bot_id(self.current_target_pos) is None:
-        #         reset_target()
 
     def initiator_script(self, ct: Controller):
         position = ct.get_position()
