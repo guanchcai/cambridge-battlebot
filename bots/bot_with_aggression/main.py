@@ -25,7 +25,7 @@ class Player:
     def __init__(self):
         self.num_spawned = 0
         self.bomber_spawned = 0
-        self.spawn_queue = [Direction.NORTH, Direction.SOUTH, Direction.NORTHEAST, Direction.NORTHWEST, Direction.CENTRE]
+        self.spawn_queue = [Direction.NORTH, Direction.NORTHEAST, Direction.NORTHWEST, Direction.CENTRE]
 
         self.internal_map = None
         self.internal_walkable_map = None
@@ -81,7 +81,7 @@ class Player:
                 Position(map_width - self.original_pos.x - 1, self.original_pos.y)
             ]
 
-            if abs(self.original_pos.x - position.x) + abs(self.original_pos.y - position.y) == 2 and not (current_round >= 20 and random.random() > 0.8):
+            if get_skibidi_distance(self.original_pos, position) == 2 and not (current_round >= 20 and random.random() > 0.8):
                 self.bot_type = BOT_TYPE.AGGRESSOR
                 self.current_state = BOT_STATE.WANDERING
                 self.target_distance_squared = 1
@@ -135,6 +135,9 @@ class Player:
                         ct.spawn_builder(spawn_pos)
                         self.num_spawned += 1
                         return
+                if current_round == 50:
+                    self.spawn_queue.append(Direction.SOUTH)
+                    
                 if current_round % 50 == 0:
                     self.spawn_queue.append(random.choice(DIAGONAL_DIRECTIONS))
             case EntityType.SENTINEL | EntityType.GUNNER:
@@ -414,7 +417,8 @@ class Player:
         
 
         decisions = [d for d in
-                     (CARDINAL_DIRECTIONS if self.current_state == BOT_STATE.WALKING_BACK
+                     (CARDINAL_DIRECTIONS if self.current_state == BOT_STATE.WALKING_BACK or
+                      get_skibidi_distance(pos, self.current_target_pos) == 2
                       else DIRECTIONS)
                      if is_in_bound(pos.add(d), ct)]
         
@@ -535,6 +539,15 @@ class Player:
             return
         
         def build_sentinel(p: Position, d: Direction, dy=None):
+            harvester_pos = check_for_entity(p, CARDINAL_DIRECTIONS, EntityType.HARVESTER, ct)
+
+            if harvester_pos:
+                if check_for_entity(harvester_pos, CARDINAL_DIRECTIONS, EntityType.SENTINEL, ct):
+                    if ct.can_build_barrier(p):
+                        ct.build_barrier(p)
+                        reset_target()
+                    return
+                
             if ct.can_build_sentinel(p, d):
                 building_id = ct.get_tile_building_id(p.add(d))
                 if building_id and ct.get_entity_type(building_id) == EntityType.HARVESTER:

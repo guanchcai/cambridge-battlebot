@@ -121,3 +121,15 @@ def limit(p: Position, ct: Controller):
         max(0, min(p.x, ct.get_map_width() - 1)),
         max(0, min(p.y, ct.get_map_height() - 1))
     )
+
+def check_for_entity(p: Position, directions: list[Direction], entity: EntityType, ct: Controller) -> Position:
+    for check_dir in CARDINAL_DIRECTIONS:
+        check_pos = p.add(check_dir)
+        if not is_in_bound(check_pos, ct) or not ct.is_in_vision(check_pos):
+            continue
+        building_id = ct.get_tile_building_id(check_pos)
+        if building_id and ct.get_entity_type(building_id) == entity:
+            return check_pos
+
+def get_skibidi_distance(p1: Position, p2: Position):
+    return abs(p1.x - p2.x) + abs(p1.y - p2.y)
