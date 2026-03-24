@@ -287,7 +287,7 @@ class Player:
                     ct.get_stored_resource(building_id) and
                     bot_id is None
                 ): 
-                    if connected_to(tile, building_id, EntityType.CORE, True, ct):
+                    if connected_to(tile, building_id, EntityType.CORE, True, ct) and not connected_to(tile, building_id, EntityType.SENTINEL, False, ct):
                         # Resource provider to the base
                         aggression_targets.append(tile)
 
@@ -296,7 +296,7 @@ class Player:
                         check_pos = tile.add(d)
                         if not is_in_bound(check_pos, ct) or not ct.is_in_vision(check_pos):
                             continue
-                        if ct.is_tile_passable(check_pos) or ct.is_tile_empty(check_pos):
+                        if (ct.is_tile_passable(check_pos) or ct.is_tile_empty(check_pos)) and not connected_to(tile, building_id, EntityType.SENTINEL, False, ct):
                             aggression_targets.append(check_pos)
                             break
 
@@ -532,6 +532,14 @@ class Player:
 
         building_id = ct.get_tile_building_id(self.current_target_pos) if ct.is_in_vision(self.current_target_pos) else None
         
+        if (
+            ct.is_in_vision(self.current_target_pos) and 
+            building_id and
+            ct.get_entity_type(building_id) not in PASSABLE
+        ):
+            reset_target()
+            return
+
         point_dir = self.current_target_pos.direction_to(self.enemy_pos)
         can_build_sentinel = ct.get_global_resources()[0] >= ct.get_sentinel_cost()[0] and ct.get_action_cooldown() == 0
         if self.aggressor_has_target:
@@ -549,11 +557,7 @@ class Player:
                     build_sentinel(self.current_target_pos, point_dir)
             
             if self.current_target_pos == position:
-                print(building_id)
-                # if ct.get_entity_type(building_id) not in VALUABLE_ENEMY_ENTITIES:
-                #     reset_target()
-                #     return
-                if ct.get_team(building_id) != ct.get_team():
+                if building_id and ct.get_team(building_id) != ct.get_team():
                     if ct.can_fire(position):
                         ct.fire(position)
                         if not ct.get_tile_building_id(position):
@@ -572,6 +576,10 @@ class Player:
 
         # Check if we have reached an ore site
         if ct.get_action_cooldown() == 0 and ct.get_global_resources()[0] >= ct.get_harvester_cost()[0] and self.current_state != BOT_STATE.WALKING_BACK:
+            if self.current_target_pos == position:
+                road_pos = check_for_entity(position, CARDINAL_DIRECTIONS, EntityType.ROAD, ct)
+                if road_pos and ct.can_move(road_pos):
+                    ct.move(road_pos)
             for d in CARDINAL_DIRECTIONS:
                 check_pos = position.add(d)
                 if not is_in_bound(check_pos, ct):

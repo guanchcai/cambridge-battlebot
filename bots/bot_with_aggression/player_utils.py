@@ -87,33 +87,28 @@ def find_core_center(ct: Controller) -> Position | None:
 
 
 def connected_to(pos: Position, building_id: int, target_building: EntityType, other_team: bool, ct: Controller):
-    try: 
-        if not is_in_bound(pos, ct): return False
-        etype = ct.get_entity_type(building_id)
+    if not is_in_bound(pos, ct) or not ct.is_in_vision(pos): return False
+    if ct.get_entity_type(building_id) == target_building and (ct.get_team(building_id) != ct.get_team()) == other_team:
+        return True
+    etype = ct.get_entity_type(building_id)
 
-        match etype:
-            case EntityType.CONVEYOR | EntityType.ARMOURED_CONVEYOR:
-                check_pos = pos.add(ct.get_direction(building_id))
-                check_id = ct.get_tile_building_id(check_pos)
-                return check_id and (
-                        (ct.get_entity_type(check_id) == target_building and (ct.get_team(check_id) != ct.get_team()) == other_team) or
-                        connected_to(check_pos, check_id, target_building, other_team, ct))
+    match etype:
+        case EntityType.CONVEYOR | EntityType.ARMOURED_CONVEYOR:
+            check_pos = pos.add(ct.get_direction(building_id))
+            check_id = ct.get_tile_building_id(check_pos)
+            return check_id and connected_to(check_pos, check_id, target_building, other_team, ct)
 
-            case EntityType.BRIDGE:
-                check_pos = ct.get_bridge_target(building_id)
-                check_id = ct.get_tile_building_id(check_pos)
-                return check_id and (
-                        (ct.get_entity_type(check_id) == target_building and (ct.get_team(check_id) != ct.get_team()) == other_team) or
-                        connected_to(check_pos, check_id, target_building, other_team, ct))
+        case EntityType.BRIDGE:
+            check_pos = ct.get_bridge_target(building_id)
+            check_id = ct.get_tile_building_id(check_pos)
+            return check_id and connected_to(check_pos, check_id, target_building, other_team, ct)
 
-            case EntityType.SPLITTER:
-                check_positions = [pos.add(d) for d in CARDINAL_DIRECTIONS]
-                tile_buildings = [ct.get_tile_building_id(p) for p in check_positions]
-                for building_id in tile_buildings:
-                    if building_id and (ct.get_entity_type(building_id) == target_building and (ct.get_team(building_id) != ct.get_team()) == other_team):
-                        return True
-    except Exception:
-        pass
+        case EntityType.SPLITTER:
+            check_positions = [pos.add(d) for d in CARDINAL_DIRECTIONS]
+            tile_buildings = [ct.get_tile_building_id(p) for p in check_positions if ct.is_in_vision(p) and is_in_bound(p, ct)]
+            for building_id in tile_buildings:
+                if building_id and (ct.get_entity_type(building_id) == target_building and (ct.get_team(building_id) != ct.get_team()) == other_team):
+                    return True
     return False
 
 def limit(p: Position, ct: Controller):
