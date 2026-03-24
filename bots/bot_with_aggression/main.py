@@ -500,7 +500,7 @@ class Player:
             harvester_pos = check_for_entity(p, CARDINAL_DIRECTIONS, EntityType.HARVESTER, ct)
 
             if harvester_pos:
-                if check_for_entity(harvester_pos, CARDINAL_DIRECTIONS, EntityType.SENTINEL, ct):
+                if check_for_entity(harvester_pos, CARDINAL_DIRECTIONS, EntityType.SENTINEL, ct, ct.get_team()):
                     if ct.can_build_barrier(p):
                         ct.build_barrier(p)
                         reset_target()
