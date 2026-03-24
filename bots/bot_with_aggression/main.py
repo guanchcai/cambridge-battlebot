@@ -627,7 +627,7 @@ class Player:
                     temp_id = ct.get_tile_building_id(position)
                     
                     same_team = temp_id and ct.get_team(temp_id) == ct.get_team()
-                    is_bridge = same_team and ct.get_entity_type(temp_id) in [EntityType.BRIDGE, EntityType.SPLITTER]
+                    is_bridge = same_team and ct.get_entity_type(temp_id) in [EntityType.BRIDGE, EntityType.SPLITTER, EntityType.CORE]
 
                     if is_bridge or (global_resources >= bridge_cost and action_cooldown == 0):
                         if ct.can_destroy(position):
