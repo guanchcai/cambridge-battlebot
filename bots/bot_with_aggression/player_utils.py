@@ -95,11 +95,13 @@ def connected_to(pos: Position, building_id: int, target_building: EntityType, o
     match etype:
         case EntityType.CONVEYOR | EntityType.ARMOURED_CONVEYOR:
             check_pos = pos.add(ct.get_direction(building_id))
+            if not is_in_bound(check_pos, ct) or not ct.is_in_vision(check_pos): return False
             check_id = ct.get_tile_building_id(check_pos)
             return check_id and connected_to(check_pos, check_id, target_building, other_team, ct)
 
         case EntityType.BRIDGE:
             check_pos = ct.get_bridge_target(building_id)
+            if not is_in_bound(check_pos, ct) or not ct.is_in_vision(check_pos): return False
             check_id = ct.get_tile_building_id(check_pos)
             return check_id and connected_to(check_pos, check_id, target_building, other_team, ct)
 

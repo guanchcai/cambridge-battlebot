@@ -539,10 +539,27 @@ class Player:
         ):
             reset_target()
             return
+        
+        if (
+            building_id and 
+            connected_to(self.current_target_pos, building_id, EntityType.SENTINEL, False, ct)
+        ):
+            reset_target()
+            return
 
         point_dir = self.current_target_pos.direction_to(self.enemy_pos)
         can_build_sentinel = ct.get_global_resources()[0] >= ct.get_sentinel_cost()[0] and ct.get_action_cooldown() == 0
         if self.aggressor_has_target:
+            
+            if self.current_target_pos == position:
+                if building_id and ct.get_team(building_id) != ct.get_team():
+                    if ct.can_fire(position):
+                        ct.fire(position)
+                        if not ct.get_tile_building_id(position):
+                            # We have destroyed the target
+                            self._pick_random(ct)
+                            return
+
             if (
                 not building_id or (ct.get_entity_type(building_id) == EntityType.ROAD and ct.get_team(building_id) == ct.get_team()) and
                 can_build_sentinel
@@ -556,13 +573,6 @@ class Player:
                     self._pick_random(ct)
                     build_sentinel(self.current_target_pos, point_dir)
             
-            if self.current_target_pos == position:
-                if building_id and ct.get_team(building_id) != ct.get_team():
-                    if ct.can_fire(position):
-                        ct.fire(position)
-                        if not ct.get_tile_building_id(position):
-                            # We have destroyed the target
-                            self._pick_random(ct)
 
     def initiator_script(self, ct: Controller):
         position = ct.get_position()
@@ -597,6 +607,7 @@ class Player:
 
                     can_build_h = ct.can_build_harvester(check_pos)
                     building_id = ct.get_tile_building_id(check_pos)
+                    print(f"Added {check_pos} to visted ores")
                     self.visited_ores.add(check_pos)
                     if (can_build_h or (building_id and ct.get_entity_type(building_id) == EntityType.HARVESTER)):
 
