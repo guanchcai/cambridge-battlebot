@@ -189,7 +189,7 @@ class Bot(ABC):
     def _update_tile(self, tile: Position, building_id: int | None, ct: Controller):
         pass
 
-    def _nearest_unexplored(self, pos: Position) -> Position | None:
+    def _nearest_unexplored(self, pos: Position, ct: Controller | None=None) -> Position | None:
         if not self.buckets:
             return None
 
@@ -213,9 +213,18 @@ class Bot(ABC):
     def _pick_random(self, ct: Controller, allowed_directions=DIRECTIONS):
         print("Picking random!")
         pos = ct.get_position()
-        move_dir = random.choice([d for d in allowed_directions if ct.is_tile_empty(pos.add(d))])
+        can_move_dir = [d for d in allowed_directions if (ct.is_tile_passable(pos.add(d)) or ct.is_tile_empty(pos.add(d))) and ct.get_tile_env(pos.add(d)) not in MINEABLE]
+        print(can_move_dir)
+        if not can_move_dir:
+            self._set_internal_map(pos)
+            return
+        move_dir = random.choice(can_move_dir)
         self._build_road(ct, pos.add(move_dir))
-        ct.move(move_dir)
+        if ct.can_move(move_dir):
+            ct.move(move_dir)
+        else:
+            self._set_internal_map(pos)
+            return
 
     def print_distance_map(self):
         def cell_to_str(c) -> str:

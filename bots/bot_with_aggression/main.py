@@ -2,6 +2,7 @@ from enum import Enum
 from player_utils import *
 from bot_types.initiator_bot import Initator
 from bot_types.bot import Bot
+from bot_types.aggressor_bot import Aggressor
 
 class BOT_TYPE(Enum):
     NORMAL = 1
@@ -20,7 +21,7 @@ class Player:
         # Core variables
         self.num_spawned = 0
         self.bomber_spawned = 0
-        self.spawn_queue = [Direction.NORTH]
+        self.spawn_queue = [Direction.NORTH, Direction.SOUTHEAST]
 
         self.bot_type: Bot | None = None
 
@@ -110,13 +111,11 @@ class Player:
         core_pos = ct.get_position(ct.get_tile_building_id(position))
         if get_skibidi_distance(core_pos, position) == 1:
             return Initator(ct)
+        elif get_skibidi_distance(core_pos, position) == 2:
+            return Aggressor(ct)
     
     
     # def aggressor_script(self, ct: Controller):
-
-    #     if self.bot_type != BOT_TYPE.AGGRESSOR:
-    #         # Safety
-    #         return
         
     #     def build_sentinel(p: Position, d: Direction, dy=None):
     #         harvester_pos = check_for_entity(p, CARDINAL_DIRECTIONS, EntityType.HARVESTER, ct)

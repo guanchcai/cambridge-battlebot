@@ -30,6 +30,7 @@ class Initator(Bot):
             allow_diagonal=self.current_state != BOT_STATE.WALKING_BACK,
             bypass_wall=self.current_state == BOT_STATE.WALKING_BACK
         )
+        self.print_distance_map()
     
     def _move_to_pos(self, ct: Controller):
         position = ct.get_position()
@@ -38,7 +39,7 @@ class Initator(Bot):
         if closest_base_pos.distance_squared(position) <= 9 and self.current_state == BOT_STATE.WALKING_BACK:
             building_id = ct.get_tile_building_id(position)
             if building_id and ct.get_entity_type(building_id) != EntityType.BRIDGE: 
-                if ct.get_action_cooldown() == 0 and ct.get_global_resources()[0] >= ct.get_conveyor_cost()[0]:
+                if ct.get_action_cooldown() == 0 and ct.get_global_resources()[0] >= ct.get_bridge_cost()[0]:
                     ct.destroy(position)
                     ct.build_bridge(position, closest_base_pos)
             self.replace_beneath = False
@@ -93,7 +94,10 @@ class Initator(Bot):
             elif dist == 1:
                 if ct.get_action_cooldown() == 0 and ct.get_global_resources()[0] >= ct.get_harvester_cost()[0]:
                     if  (
-                        ct.get_entity_type(building_id) == EntityType.ROAD and 
+                        (
+                            ct.get_entity_type(building_id) in CONVEYORS or
+                            ct.get_entity_type(building_id) == EntityType.ROAD
+                        ) and 
                         ct.get_team(building_id) == ct.get_team()
                     ):
                         ct.destroy(self.current_target_pos)
@@ -152,7 +156,8 @@ class Initator(Bot):
     def _hit_wall(self, wall_pos, ct):
         print("I hit a wall!")
         building_id = ct.get_tile_building_id(wall_pos)
-        if ct.get_tile_env(wall_pos) != Environment.WALL or (building_id and ct.get_entity_type(building_id) in PASSABLE):
+        if get_from_pos(self.internal_walkable_map, wall_pos, self.map_width) != Environment.WALL:
+            self._pick_random(ct)
             return
         if self.current_state == BOT_STATE.WALKING_BACK:
             self.replace_beneath = True

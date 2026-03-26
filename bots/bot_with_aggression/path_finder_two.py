@@ -69,7 +69,7 @@ def flood_fill(
             in_zone = in_target_zone(nx, ny)
 
             if map[ni] in WALLS and not (bypass_wall and in_zone):
-                distance_map[ni] = math.inf  # mark as wall, not unreachable
+                distance_map[ni] = math.inf
                 visited.add(ni)
                 continue
 
