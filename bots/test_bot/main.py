@@ -23,8 +23,11 @@ class Player:
         self.timer = 0
         self.start_pos = None
         self.target_pos = None
+        self.movement_queue = [Direction.WEST, Direction.WEST, Direction.WEST, Direction.SOUTH, Direction.SOUTH, Direction.SOUTH, None, Direction.WEST, None]
+        self.placement_queue = [None, None, None, None, None, None, (EntityType.HARVESTER, Direction.SOUTH), None, (EntityType.SENTINEL, Direction.SOUTH)]
 
     def run(self, ct: Controller) -> None:
+        return
         etype = ct.get_entity_type()
         if etype == EntityType.CORE:
             if self.num_spawned < 1:
@@ -34,25 +37,15 @@ class Player:
                     ct.spawn_builder(spawn_pos)
                     self.num_spawned += 1
         elif etype == EntityType.BUILDER_BOT:
-            if (not self.start_pos):
-                self.start_pos = ct.get_position()
-
-            move_dir = Direction.WEST
-            move_pos = ct.get_position().add(move_dir)
-            # we need to place a conveyor or road to stand on, before we can move onto a tile
-            if self.timer == 2:
-                ct.build_bridge(ct.get_position().add(Direction.NORTH), self.start_pos)
-                self.target_pos = ct.get_position().add(Direction.NORTH) 
-            if self.timer == 6:
-                ct.build_bridge(ct.get_position().add(Direction.NORTH), self.target_pos)
-                self.target_pos = ct.get_position().add(Direction.NORTH)
-            if ct.can_build_road(move_pos):
-                ct.build_road(move_pos)
-                
-            if ct.can_move(move_dir):
-                ct.move(move_dir)
-            else:
-                ct.self_destruct()
-            
-            self.timer += 1
+            movement = self.movement_queue.pop(0)
+            if movement:
+                ct.build_road(ct.get_position().add(movement))
+                ct.move(movement)
+            placement = self.placement_queue.pop(0)
+            if not placement: return
+            match placement[0]:
+                case EntityType.HARVESTER:
+                    ct.build_harvester(ct.get_position().add(placement[1]))
+                case EntityType.SENTINEL:
+                    ct.build_sentinel(ct.get_position().add(placement[1]), Direction.NORTH)
 

@@ -3,66 +3,87 @@ import math
 from cambc import Position, Environment, Direction
 
 CARDINAL_DELTAS = [(0, 1), (0, -1), (1, 0), (-1, 0)]
-ALL_DIRECTION_DELTAS = [(0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (-1, -1), (1, -1), (-1, 1)]
+DIAGONAL_DELTAS = [(1, 1), (-1, -1), (1, -1), (-1, 1)]
+ALL_DELTAS = CARDINAL_DELTAS + DIAGONAL_DELTAS
 
-def flood_fill(map: list[list[Environment | None]], target: Position, origin: Position, ignore_ores, target_distance_squared=0, allow_diagonal=False, bypass_wall=False):
-    width = len(map)
-    height = len(map[0])
-    distance_map = [[None] * height for _ in range(width)]
-    g_score = [[math.inf] * height for _ in range(width)]
+def flood_fill(
+    map: list[Environment | None],
+    w: int,
+    target: Position,
+    origin: Position,
+    ignore_ores: bool,
+    target_distance_squared: int = 0,
+    allow_diagonal: bool = False,
+    bypass_wall: bool = False,
+) -> list[float | None]:
+    h = len(map) // w
 
-    tx, ty = target.x, target.y
-    ox, oy = origin.x, origin.y
+    if not is_in_bound(target.x, target.y, w, h):
+        return [None] * (w * h)
 
-    if not is_in_bound(tx, ty, width, height):
-        return distance_map
+    WALLS = {Environment.WALL} if ignore_ores else {Environment.WALL, Environment.ORE_AXIONITE, Environment.ORE_TITANIUM}
+    DELTAS = ALL_DELTAS if allow_diagonal else CARDINAL_DELTAS
 
-    def is_target_zone(x, y) -> bool:
-        dx, dy = x - tx, y - ty
-        return dx*dx + dy*dy <= target_distance_squared
+    def idx(x, y) -> int:
+        return y * w + x
+
+    def in_target_zone(x, y) -> bool:
+        dx, dy = x - target.x, y - target.y
+        return dx * dx + dy * dy < target_distance_squared
 
     def heuristic(x, y) -> float:
-        if allow_diagonal:
-            return max(abs(x - ox), abs(y - oy))
-        return abs(x - ox) + abs(y - oy)
+        dx, dy = abs(x - origin.x), abs(y - origin.y)
+        return max(dx, dy) if allow_diagonal else dx + dy
 
-    g_score[tx][ty] = 0
-    distance_map[tx][ty] = 0
-    open_set = [(heuristic(tx, ty), tx, ty)]
+    distance_map = [None] * (w * h)  # None = unvisited/unreachable
+    g_score = [math.inf] * (w * h)
+    visited = set()
 
-    WALL_TYPES = set([Environment.WALL, Environment.ORE_AXIONITE, Environment.ORE_TITANIUM]) if not ignore_ores else set([Environment.WALL])
+    ti = idx(target.x, target.y)
+    g_score[ti] = 0
+    distance_map[ti] = 0
+
+    open_set = [(heuristic(target.x, target.y), target.x, target.y)]
 
     while open_set:
         _, cx, cy = heapq.heappop(open_set)
 
-        if cx == ox and cy == oy:
+        ci = idx(cx, cy)
+        if ci in visited:
+            continue
+        visited.add(ci)
+
+        if cx == origin.x and cy == origin.y:
             return distance_map
 
-        for dx, dy in (CARDINAL_DELTAS if not allow_diagonal else ALL_DIRECTION_DELTAS):
+        for dx, dy in DELTAS:
             nx, ny = cx + dx, cy + dy
 
-            if not (0 <= nx < width and 0 <= ny < height):
+            if not is_in_bound(nx, ny, w, h):
                 continue
 
-            if distance_map[nx][ny] is not None:
+            ni = idx(nx, ny)
+            if ni in visited:
                 continue
 
-            if map[nx][ny] in WALL_TYPES and not (bypass_wall and is_target_zone(nx, ny)):
-                distance_map[nx][ny] = math.inf
+            in_zone = in_target_zone(nx, ny)
+
+            if map[ni] in WALLS and not (bypass_wall and in_zone):
+                distance_map[ni] = math.inf  # mark as wall, not unreachable
+                visited.add(ni)
                 continue
 
             is_diagonal = dx != 0 and dy != 0
-            
-            # Near the target, add a tiny penalty to diagonal moves so cardinals win ties
-            diagonal_penalty = 0.001 if (is_diagonal) else 0
-            new_g = 0 if is_target_zone(nx, ny) else g_score[cx][cy] + 1 + diagonal_penalty
+            diagonal_penalty = 0.001 if is_diagonal else 0
+            new_g = 0 if in_zone else g_score[ci] + 1 + diagonal_penalty
 
-            if new_g < g_score[nx][ny]:
-                g_score[nx][ny] = new_g
-                distance_map[nx][ny] = new_g
+            if new_g < g_score[ni]:
+                g_score[ni] = new_g
+                distance_map[ni] = new_g
                 heapq.heappush(open_set, (new_g + heuristic(nx, ny), nx, ny))
 
     return distance_map
 
-def is_in_bound(x: int, y: int, w: int, h: int):
+
+def is_in_bound(x: int, y: int, w: int, h: int) -> bool:
     return 0 <= x < w and 0 <= y < h

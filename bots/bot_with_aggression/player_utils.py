@@ -24,10 +24,16 @@ OFFSETS = [(dx, dy) for dx in range(-1, 2) for dy in range(-1, 2)]
 def is_in_bound(pos: Position, ct: Controller):
     return pos.x in range(ct.get_map_width()) and pos.y in range(ct.get_map_height())
 
-def get_from_dir(map: list[list], pos: Position, dir: Direction):
+def get_from_dir(map: list[Environment | None], pos: Position, dir: Direction, w: int):
     p1 = pos.add(dir)
-    val = map[p1.x][p1.y]
+    val = get_from_pos(map, p1, w)
     return val if val is not None else math.inf
+
+def get_from_pos(map: list[Environment | None], pos: Position, w: int):
+    return map[pos.x + pos.y * w]
+
+def set_from_pos(map: list, pos: Position, v, w: int):
+    map[pos.x + pos.y * w] = v 
 
 
 def min_with_random_tiebreak(iterable, key=(lambda x: x)):
@@ -64,28 +70,6 @@ def direction_to_delta(direction: Direction) -> Position:
     return DIR_TO_DELTA_DICT[direction]
 
 
-def find_core_center(ct: Controller) -> Position | None:
-    core_tiles = set()
-    for tile in ct.get_nearby_tiles():
-        tile_id = ct.get_tile_building_id(tile)
-        if tile_id and ct.get_entity_type(tile_id) == EntityType.CORE and ct.get_team(tile_id) == ct.get_team():
-            core_tiles.add((tile.x, tile.y))
-
-    # For each core tile, check if it is the center of a 3x3 block of cores
-    # for (cx, cy) in core_tiles:
-    #     if all((cx + dx, cy + dy) in core_tiles
-    #            for dx in range(-1, 2)
-    #            for dy in range(-1, 2)):
-    #         return Position(cx, cy)
-    #
-    # return None
-
-    for (cx, cy) in core_tiles:
-        if all((cx+dx,cy+dy) in core_tiles for dx, dy in OFFSETS):
-            return Position(cx, cy)
-    return None
-
-
 def connected_to(pos: Position, building_id: int, target_building: EntityType, other_team: bool, ct: Controller):
     if not is_in_bound(pos, ct) or not ct.is_in_vision(pos): return False
     if ct.get_entity_type(building_id) == target_building and (ct.get_team(building_id) != ct.get_team()) == other_team:
@@ -119,13 +103,13 @@ def limit(p: Position, ct: Controller):
         max(0, min(p.y, ct.get_map_height() - 1))
     )
 
-def check_for_entity(p: Position, directions: list[Direction], entity: EntityType, ct: Controller, team = None) -> Position:
+def check_for_entity(p: Position, directions: list[Direction], entity: EntityType, ct: Controller, team = None) -> Position | None:
     for check_dir in directions:
         check_pos = p.add(check_dir)
         if not is_in_bound(check_pos, ct) or not ct.is_in_vision(check_pos):
             continue
         building_id = ct.get_tile_building_id(check_pos)
-        if building_id and ct.get_entity_type(building_id) == entity and (team is None or ct.get_team(building_id) == team):
+        if building_id and ct.get_entity_type(building_id) == entity and ((ct.get_team(building_id) == team) or (team is None)):
             return check_pos
     return 
 
