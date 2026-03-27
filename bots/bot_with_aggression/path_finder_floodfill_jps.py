@@ -160,4 +160,3 @@ class FloodFillCalculator:
                     heapq.heappush(open_set, (new_g + self.heuristic(jx, jy), jx, jy))
 
         return distance_map
-
