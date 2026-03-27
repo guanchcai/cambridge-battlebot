@@ -90,7 +90,8 @@ class Aggressor(Bot):
                     if (
                         check_id is None
                     ) or (
-                        ct.get_entity_type(check_id) in PASSABLE
+                        ct.get_entity_type(check_id) in PASSABLE and 
+                        not connected_to(tile, building_id, EntityType.SENTINEL, False, ct)
                     ):
                         self.aggression_targets.append(check_pos)
         elif building_id and ct.get_entity_type(building_id) in CONVEYORS and ct.get_stored_resource(building_id) in [ResourceType.REFINED_AXIONITE, ResourceType.TITANIUM]:
@@ -101,7 +102,7 @@ class Aggressor(Bot):
             if is_in_bound(self.current_target_pos, ct) and ct.is_in_vision(self.current_target_pos):
                 check_id = ct.get_tile_building_id(self.current_target_pos)
                 if check_id is not None and ct.get_entity_type(check_id) not in PASSABLE:
-                    self._set_wandering(ct)
+                    self._set_wandering()
                         
     def _read_markers(self, val, marker_pos):
         return super()._read_markers(val, marker_pos)
@@ -128,7 +129,7 @@ class Aggressor(Bot):
         harvester_pos = check_for_entity(p, CARDINAL_DIRECTIONS, EntityType.HARVESTER, ct)
 
         if harvester_pos:
-            if check_for_entity(harvester_pos, CARDINAL_DIRECTIONS, EntityType.SENTINEL, ct, ct.get_team()):
+            if p.distance_squared(self.enemy_pos) >= 169 or check_for_entity(harvester_pos, CARDINAL_DIRECTIONS, EntityType.SENTINEL, ct, ct.get_team()):
                 if ct.can_build_barrier(p):
                     ct.build_barrier(p)
                     self._set_wandering()

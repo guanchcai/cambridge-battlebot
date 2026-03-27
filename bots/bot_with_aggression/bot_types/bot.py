@@ -1,7 +1,7 @@
 from enum import Enum
 from player_utils import *
 from collections import defaultdict
-from path_finder_two import flood_fill
+from path_finder_floodfill_jps import FloodFillCalculator
 from abc import ABC, abstractmethod
 
 class BOT_STATE(Enum):
@@ -24,8 +24,10 @@ class Bot(ABC):
         # Path finding variables
         self.internal_map = None
         self.internal_walkable_map = None
-        self.target_distance_squared = 0    
-        self.map_width = ct.get_map_width()    
+        self.target_distance_squared = 0
+        self.map_width = ct.get_map_width()
+        self.placeable_calculator = None
+        self.walkable_calculator = None
         
         self.distance_map = None
         self.current_target_pos = None
@@ -63,6 +65,8 @@ class Bot(ABC):
                     self.buckets[bucket] = []
                 self.buckets[bucket].append(p)
         
+        self.placeable_calculator = FloodFillCalculator(self.internal_map, self.map_width)
+        self.walkable_calculator = FloodFillCalculator(self.internal_walkable_map, self.map_width)
 
     @abstractmethod
     def _set_wandering(self):
@@ -74,19 +78,17 @@ class Bot(ABC):
 
     @abstractmethod
     def _set_internal_map(self, position: Position):
-        self.distance_map = flood_fill(
-            self.internal_walkable_map,
-            self.map_width,
+        self.distance_map = self.walkable_calculator.run(
             self.current_target_pos,
-            position, 
-            ignore_ores=True,
-            target_distance_squared=self.target_distance_squared,
-            allow_diagonal=True,
-            bypass_wall=False
+            position,
+            True,
+            self.target_distance_squared,
+            True,
+            False
         )
         
     @abstractmethod
-    def _move_to_pos(self, ct: Controller, allowed_movements=DIRECTIONS):
+    def _move_to_pos(self, ct: Controller, cardinal=False):
         if not self.current_target_pos:
             return
         position = ct.get_position()
@@ -100,33 +102,25 @@ class Bot(ABC):
             self.previous_target_pos = self.current_target_pos
             self._set_internal_map(position)
 
-        decisions = [d for d in
-                     allowed_movements
-                     if is_in_bound(position.add(d), ct)]
-        
-        chosen = min(decisions, key=lambda d: get_from_dir(self.distance_map, position, d, self.map_width))
-        move_pos = position.add(chosen)
-
-        reachable = [d for d in decisions
-                    if get_from_dir(self.distance_map, position, d, self.map_width) not in (None, math.inf)]
-
-        if not reachable:
-            # Target is unreachable from here, abandon it
+        if not self.distance_map:
             self._set_wandering()
             return
 
-        next_decisions = [d for d in allowed_movements
-                  if is_in_bound(move_pos.add(d), ct)]
-        next_chosen = min(next_decisions, key=lambda d: get_from_dir(self.distance_map, move_pos, d, self.map_width))
+        if position == self.distance_map[0]:
+            self.distance_map.pop(0)
+        
+        chosen = position.direction_to(self.distance_map[0])
+        
+        move_pos = position.add(chosen)
 
-        self._build_road(ct, move_pos, next_chosen)
+        self._build_road(ct, move_pos)
         if ct.can_move(chosen):
             ct.move(chosen)
-        else:
+        elif not ct.is_tile_empty(move_pos):
             self._hit_wall(move_pos, ct)
 
     @abstractmethod
-    def _build_road(self, ct: Controller, move_pos: Position, next_direction: Direction | None=None):
+    def _build_road(self, ct: Controller, move_pos: Position):
         pass
 
     def update_map(self, ct: Controller):
@@ -214,8 +208,7 @@ class Bot(ABC):
     def _pick_random(self, ct: Controller, allowed_directions=DIRECTIONS):
         print("Picking random!")
         pos = ct.get_position()
-        can_move_dir = [d for d in allowed_directions if (ct.is_tile_passable(pos.add(d)) or ct.is_tile_empty(pos.add(d))) and ct.get_tile_env(pos.add(d)) not in MINEABLE]
-        print(can_move_dir)
+        can_move_dir = [d for d in allowed_directions if is_in_bound(pos.add(d), ct) and (ct.is_tile_passable(pos.add(d)) or ct.is_tile_empty(pos.add(d))) and ct.get_tile_env(pos.add(d)) not in MINEABLE]
         if not can_move_dir:
             self._set_internal_map(pos)
             return

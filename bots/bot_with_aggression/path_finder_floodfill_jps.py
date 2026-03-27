@@ -5,6 +5,8 @@ from cambc import Position, Environment, Direction
 CARDINAL_DELTAS = [(0, 1), (0, -1), (1, 0), (-1, 0)]
 DIAGONAL_DELTAS = [(1, 1), (-1, -1), (1, -1), (-1, 1)]
 ALL_DELTAS = CARDINAL_DELTAS + DIAGONAL_DELTAS
+BRIDGE_DELTAS = [(dx, dy) for dx in range(-3, 4) for dy in range(-3, 4) if 0 < dx*dx + dy*dy <= 9]
+BRIDGE_PENALTY = 5
 
 class FloodFillCalculator:
     def __init__(self, map: list[Environment | None], w: int):
@@ -41,6 +43,10 @@ class FloodFillCalculator:
         if not self.is_in_bound(x, y):
             return False
         cell = self.map[self.idx(x, y)]
+        if cell is None:
+            return True
+        if x == self.target.x and y == self.target.y and cell in self.walls:
+            return False
         if cell in self.walls:
             return self.bypass_wall and self.in_target_zone(x, y)
         return True
@@ -106,7 +112,7 @@ class FloodFillCalculator:
             new_g = 0 if self.in_target_zone(jx, jy) else g_current + dist + diagonal_penalty
 
             successors.append((new_g, ji, jx, jy))
-
+        
         return successors
 
     def run(
@@ -117,7 +123,7 @@ class FloodFillCalculator:
         target_distance_squared: int = 0,
         allow_diagonal: bool = False,
         bypass_wall: bool = False,
-    ) -> list[float | None]:
+    ) -> list[tuple[int, int]]:
         self.target = target
         self.origin = origin
         self.target_distance_squared = target_distance_squared
@@ -129,34 +135,95 @@ class FloodFillCalculator:
             else {Environment.WALL, Environment.ORE_AXIONITE, Environment.ORE_TITANIUM}
         )
 
-        distance_map = [None] * self.area
-
-        if not self.is_in_bound(target.x, target.y): return distance_map
-
+        if not self.is_in_bound(target.x, target.y):
+            return []
+        if not allow_diagonal:
+            return self._run_astar()
         g_score = [math.inf] * self.area
         visited = set()
+        came_from = {}
 
         ti = self.idx(target.x, target.y)
-        g_score[ti] = 0
-        distance_map[ti] = 0
+        g_score[ti] = 0 
 
         open_set = [(self.heuristic(target.x, target.y), target.x, target.y)]
+        while open_set:
+            _, cx, cy = heapq.heappop(open_set)
+            ci = self.idx(cx, cy)
+
+            if ci in visited:
+                continue
+            visited.add(ci)
+
+            if cx == origin.x and cy == origin.y:
+                path = []
+                current = (origin.x, origin.y)
+                while current != (target.x, target.y):
+                    path.append(Position(current[0], current[1]))
+                    ci = self.idx(*current)
+                    if ci not in came_from:
+                        break
+                    current = came_from[ci]
+                path.append(Position(target.x, target.y))
+                return path
+
+            for new_g, ji, jx, jy in self.identify_successors(cx, cy, g_score[ci]):
+                if ji in visited:
+                    continue
+                if new_g < g_score[ji]:
+                    g_score[ji] = new_g
+                    came_from[ji] = (cx, cy)
+                    heapq.heappush(open_set, (new_g + self.heuristic(jx, jy), jx, jy))
+            
+            if cx == target.x and cy == target.y and not self.is_walkable(cx, cy):
+                g_score[ti] = math.inf
+
+        return []
+
+
+    def _run_astar(self) -> list[Position]:
+        g_score = [math.inf] * self.area
+        visited = set()
+        came_from = {}  # idx -> (cx, cy, cost)
+
+        ti = self.idx(self.target.x, self.target.y)
+        g_score[ti] = 0
+        open_set = [(self.heuristic(self.target.x, self.target.y), self.target.x, self.target.y)]
 
         while open_set:
             _, cx, cy = heapq.heappop(open_set)
             ci = self.idx(cx, cy)
 
-            if ci in visited: continue
+            if ci in visited:
+                continue
             visited.add(ci)
 
-            if cx == origin.x and cy == origin.y:
-                return distance_map
+            if cx == self.origin.x and cy == self.origin.y:
+                path = []
+                current = (self.origin.x, self.origin.y)
+                while current != (self.target.x, self.target.y):
+                    ci = self.idx(*current)
+                    if ci not in came_from:
+                        break
+                    px, py = came_from[ci]
+                    path.append(Position(current[0], current[1]))
+                    current = (px, py)
+                path.append(Position(self.target.x, self.target.y))
+                return path
 
-            for new_g, ji, jx, jy in self.identify_successors(cx, cy, g_score[ci]):
-                if ji in visited: continue
-                if new_g < g_score[ji]:
-                    g_score[ji] = new_g
-                    distance_map[ji] = new_g
-                    heapq.heappush(open_set, (new_g + self.heuristic(jx, jy), jx, jy))
+            for dx, dy in BRIDGE_DELTAS:
+                nx, ny = cx + dx, cy + dy
+                if not self.is_walkable(nx, ny):
+                    continue
+                ni = self.idx(nx, ny)
+                if ni in visited:
+                    continue
+                is_bridge = (dx, dy) not in CARDINAL_DELTAS
+                cost = BRIDGE_PENALTY if is_bridge else 1
+                new_g = g_score[ci] + cost
+                if new_g < g_score[ni]:
+                    g_score[ni] = new_g
+                    came_from[ni] = (cx, cy)
+                    heapq.heappush(open_set, (new_g + self.heuristic(nx, ny), nx, ny))
 
-        return distance_map
+        return []

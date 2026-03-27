@@ -21,7 +21,7 @@ class Player:
         # Core variables
         self.num_spawned = 0
         self.bomber_spawned = 0
-        self.spawn_queue = [Direction.NORTH, Direction.SOUTHEAST]
+        self.spawn_queue = [Direction.NORTH, Direction.SOUTHEAST, Direction.NORTHEAST, Direction.SOUTHWEST, Direction.SOUTH]
 
         self.bot_type: Bot | None = None
 
