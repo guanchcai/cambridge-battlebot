@@ -78,6 +78,7 @@ class Bot(ABC):
 
     @abstractmethod
     def _set_internal_map(self, position: Position):
+        print("Start recording time!")
         self.distance_map = self.walkable_calculator.run(
             self.current_target_pos,
             position,
@@ -98,9 +99,13 @@ class Bot(ABC):
             self._target_reached(ct)
             return
         
+        start_time = ct.get_cpu_time_elapsed()
         if self.previous_target_pos != self.current_target_pos or self.distance_map is None:
             self.previous_target_pos = self.current_target_pos
             self._set_internal_map(position)
+        
+        print(f"Time taken: {ct.get_cpu_time_elapsed() - start_time}")
+        return
 
         if not self.distance_map:
             self._set_wandering()

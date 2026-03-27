@@ -25,6 +25,7 @@ class Initator(Bot):
     def _set_internal_map(self, position):
         if not self.current_target_pos:
             return
+        
         if self.current_state == BOT_STATE.WALKING_BACK:
             self.distance_map = self.placeable_calculator.run(
                 self.current_target_pos,
@@ -304,6 +305,7 @@ class Initator(Bot):
         building_id = ct.get_tile_building_id(wall_pos)
         if get_from_pos(self.internal_walkable_map, wall_pos, self.map_width) != Environment.WALL and self.current_state != BOT_STATE.WALKING_BACK:
             self._pick_random(ct)
+            self.distance_map = None
             return
         if self.current_state == BOT_STATE.WALKING_BACK:
             self.replace_beneath = True

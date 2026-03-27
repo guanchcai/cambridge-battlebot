@@ -3,6 +3,7 @@ from player_utils import *
 from bot_types.initiator_bot import Initator
 from bot_types.bot import Bot
 from bot_types.aggressor_bot import Aggressor
+from bot_types.healer import Healer
 
 class BOT_TYPE(Enum):
     NORMAL = 1
@@ -21,7 +22,7 @@ class Player:
         # Core variables
         self.num_spawned = 0
         self.bomber_spawned = 0
-        self.spawn_queue = [Direction.NORTH, Direction.SOUTHEAST, Direction.NORTHEAST, Direction.SOUTHWEST, Direction.SOUTH]
+        self.spawn_queue = [Direction.NORTH, Direction.NORTHEAST, Direction.SOUTHWEST]
 
         self.bot_type: Bot | None = None
 
@@ -36,6 +37,12 @@ class Player:
         etype = ct.get_entity_type()
         match etype:
             case EntityType.CORE:
+                print(self.spawn_queue)
+                bot_id = ct.get_tile_builder_bot_id(position)
+                if bot_id is None:
+                    if ct.can_spawn(position):
+                        ct.spawn_builder(position)
+                        
                 if self.spawn_queue:
                     direction = self.spawn_queue[0] if self.spawn_queue else random.choice(CARDINAL_DIRECTIONS)
                     spawn_pos = position.add(direction)
@@ -44,25 +51,22 @@ class Player:
                         self.num_spawned += 1
                         self.spawn_queue.pop(0)
                         return
-                # if (
-                #     not self.spawn_queue and current_round >= 80 and
-                #     (
-                #         ct.get_current_round() >= 400 or # Go ham
-                #         global_resources >= harvester_cost * 1.5
-                #     )
-                #     and self.num_spawned <= 500
-                # ):
-                #     direction = random.choice(DIAGONAL_DIRECTIONS)
-                #     spawn_pos = ct.get_position().add(direction)
-                #     if ct.can_spawn(spawn_pos):
-                #         ct.spawn_builder(spawn_pos)
-                #         self.num_spawned += 1
-                #         return
-                # if current_round == 50:
-                #     self.spawn_queue.append(Direction.SOUTH)
-                    
-                # if current_round % 50 == 0:
-                #     self.spawn_queue.append(random.choice(DIAGONAL_DIRECTIONS))
+                if (
+                    not self.spawn_queue and current_round >= 80 and
+                    (
+                        ct.get_current_round() >= 400 or # Go ham
+                        global_resources >= harvester_cost * 1.5
+                    )
+                    and self.num_spawned <= 500
+                ):
+                    direction = random.choice(DIAGONAL_DIRECTIONS)
+                    spawn_pos = ct.get_position().add(direction)
+                    if ct.can_spawn(spawn_pos):
+                        ct.spawn_builder(spawn_pos)
+                        self.num_spawned += 1
+                        return
+                if current_round == 100:
+                    self.spawn_queue.append(Direction.SOUTH)
             case EntityType.SENTINEL | EntityType.GUNNER:
                 candidate = None
                 
@@ -106,6 +110,9 @@ class Player:
                     bot._move_to_pos(ct)
                 else:
                     bot.current_target_pos = bot._find_target(ct)
+
+                if ct.can_heal(position):
+                    ct.heal(position)
     
     def decide_bot_type(self, position: Position, ct: Controller):
         core_pos = ct.get_position(ct.get_tile_building_id(position))
@@ -113,6 +120,8 @@ class Player:
             return Initator(ct)
         elif get_skibidi_distance(core_pos, position) == 2:
             return Aggressor(ct)
+        else:
+            return Healer(ct)
     
     
     # def aggressor_script(self, ct: Controller):
