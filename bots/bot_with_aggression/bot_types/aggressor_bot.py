@@ -90,7 +90,7 @@ class Aggressor(Bot):
                 if is_in_bound(self.current_target_pos, ct) and ct.is_in_vision(self.current_target_pos):
                     check_id = ct.get_tile_building_id(self.current_target_pos)
                     if check_id is not None and ct.get_entity_type(check_id) not in PASSABLE:
-                        self._set_wandering()
+                        self._set_wandering(ct)
                         
     def _read_markers(self, val, marker_pos):
         return super()._read_markers(val, marker_pos)

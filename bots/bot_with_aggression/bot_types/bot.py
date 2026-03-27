@@ -106,6 +106,7 @@ class Bot(ABC):
         
         chosen = min(decisions, key=lambda d: get_from_dir(self.distance_map, position, d, self.map_width))
         move_pos = position.add(chosen)
+
         reachable = [d for d in decisions
                     if get_from_dir(self.distance_map, position, d, self.map_width) not in (None, math.inf)]
 

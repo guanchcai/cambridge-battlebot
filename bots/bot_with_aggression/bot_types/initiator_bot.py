@@ -15,7 +15,7 @@ class Initator(Bot):
     def _initialisation(self, ct):
         return super()._initialisation(ct)
     
-    def _set_wandering(self, ct):
+    def _set_wandering(self):
         super()._set_wandering()
         self.replace_beneath = False
     
@@ -43,7 +43,7 @@ class Initator(Bot):
                     ct.destroy(position)
                     ct.build_bridge(position, closest_base_pos)
             self.replace_beneath = False
-            self._set_wandering(ct)
+            self._set_wandering()
             return
 
         if self.replace_beneath:
@@ -112,7 +112,7 @@ class Initator(Bot):
                     self.current_target_pos = self.original_pos
                     self.replace_beneath = True
                     return
-            
+        
         super()._move_to_pos(ct, CARDINAL_DIRECTIONS if self.current_state == BOT_STATE.WALKING_BACK else DIRECTIONS)
             
     
@@ -169,8 +169,8 @@ class Initator(Bot):
         if self.current_state == BOT_STATE.GOING_TO_TARGET:
             return
         elif self.current_state == BOT_STATE.WALKING_BACK:
-            self._set_wandering(ct)
+            self._set_wandering()
 
         else:
             self.current_target_pos = self._find_target(ct)
-            self._move_to_pos(ct)
+            self._move_to_pos()

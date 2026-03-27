@@ -30,11 +30,11 @@ def get_from_dir(map: list[Environment | None], pos: Position, dir: Direction, w
     return val if val is not None else math.inf
 
 def get_from_pos(map: list[Environment | None], pos, w: int):
-    if pos is Position:
+    if isinstance(pos, Position):
         return map[pos.x + pos.y * w]
-    elif pos is tuple:
+    elif isinstance(pos, tuple):
         return map[pos[0] + pos[1] * w]
-
+    
 def set_from_pos(map: list, pos: Position, v, w: int):
     map[pos.x + pos.y * w] = v 
 
