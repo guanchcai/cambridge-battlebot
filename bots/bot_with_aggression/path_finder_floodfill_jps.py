@@ -33,22 +33,22 @@ class FloodFillCalculator:
 
     def in_target_zone(self, x: int, y: int) -> bool:
         dx, dy = x - self.target.x, y - self.target.y
-        return dx * dx + dy * dy < self.target_distance_squared
+        return dx * dx + dy * dy <= self.target_distance_squared
 
     def heuristic(self, x: int, y: int) -> float:
-        dx, dy = abs(x - self.origin.x), abs(y - self.origin.y)
+        dx, dy = abs(x - self.target.x), abs(y - self.target.y)
         return max(dx, dy) if self.allow_diagonal else dx + dy
-
+    
     def is_walkable(self, x: int, y: int) -> bool:
         if not self.is_in_bound(x, y):
             return False
         cell = self.map[self.idx(x, y)]
         if cell is None:
             return True
-        if x == self.target.x and y == self.target.y and cell in self.walls:
-            return False
         if cell in self.walls:
-            return self.bypass_wall and self.in_target_zone(x, y)
+            if self.in_target_zone(x, y):
+                return self.bypass_wall  # only passable if bypass_wall is set
+            return False
         return True
 
     def jump_cardinal(self, x: int, y: int, dx: int, dy: int) -> tuple[int, int] | None:
@@ -59,7 +59,7 @@ class FloodFillCalculator:
             # wall or OOB -- not jump pt
             if not self.is_walkable(x, y): return None
             # goal -- is jump pt
-            if self.in_target_zone(x, y) or coord == (self.origin.x, self.origin.y):
+            if self.in_target_zone(x, y):
                 return coord
 
             if dx == 0:
@@ -81,7 +81,7 @@ class FloodFillCalculator:
         while True:
             coord = x, y = x + dx, y + dy
             if not self.is_walkable(x, y): return None
-            if self.in_target_zone(x, y) or coord == (self.origin.x, self.origin.y):
+            if self.in_target_zone(x, y):
                 return coord
 
             # if jump point found cardinally, then current cell is also a jump point
@@ -95,24 +95,72 @@ class FloodFillCalculator:
             if (not self.is_walkable(x - dx, y) and self.is_walkable(x - dx, y + dy)) or \
                (not self.is_walkable(x, y - dy) and self.is_walkable(x + dx, y - dy)):
                 return coord
+    
+    def natural_neighbors(self, dx: int, dy: int) -> list[tuple[int, int]]:
+        """Returns the natural neighbors given incoming direction (dx, dy)."""
+        if dx != 0 and dy != 0:
+            # diagonal move: natural = forward-x, forward-y, forward-diagonal
+            return [(dx, 0), (0, dy), (dx, dy)]
+        elif dx != 0:
+            # horizontal move: natural = forward only
+            return [(dx, 0)]
+        else:
+            # vertical move: natural = forward only
+            return [(0, dy)]
 
-    def identify_successors(self, cx: int, cy: int, g_current: float) -> list[tuple[float, int, int, int]]:
+    def forced_neighbors(self, cx: int, cy: int, dx: int, dy: int) -> list[tuple[int, int]]:
+        """Returns forced neighbors at (cx, cy) given incoming direction."""
+        forced = []
+        if dx != 0 and dy != 0:
+            # diagonal: forced if blocked on one axis but open diagonally past it
+            if not self.is_walkable(cx - dx, cy) and self.is_walkable(cx - dx, cy + dy):
+                forced.append((-dx, dy))
+            if not self.is_walkable(cx, cy - dy) and self.is_walkable(cx + dx, cy - dy):
+                forced.append((dx, -dy))
+        elif dx != 0:
+            # horizontal: forced if blocked above/below, open diagonally ahead
+            if not self.is_walkable(cx, cy + 1) and self.is_walkable(cx + dx, cy + 1):
+                forced.append((dx, 1))
+            if not self.is_walkable(cx, cy - 1) and self.is_walkable(cx + dx, cy - 1):
+                forced.append((dx, -1))
+        else:
+            # vertical: forced if blocked left/right, open diagonally ahead
+            if not self.is_walkable(cx + 1, cy) and self.is_walkable(cx + 1, cy + dy):
+                forced.append((1, dy))
+            if not self.is_walkable(cx - 1, cy) and self.is_walkable(cx - 1, cy + dy):
+                forced.append((-1, dy))
+        return forced
+
+    def identify_successors(self, cx: int, cy: int, parent: tuple[int, int] | None, g_current: float) -> list[tuple[float, int, int, int]]:
         successors = []
 
-        for dx, dy in self.deltas:
+        if parent is None:
+            # start node: expand all directions
+            dirs = self.deltas
+        else:
+            px, py = parent
+            dx = cx - px
+            dy = cy - py
+            # normalise to unit direction
+            dx = (dx > 0) - (dx < 0)
+            dy = (dy > 0) - (dy < 0)
+            dirs = self.natural_neighbors(dx, dy) + self.forced_neighbors(cx, cy, dx, dy)
+
+        for dx, dy in dirs:
             is_diagonal = dx != 0 and dy != 0
             jp = self.jump_diagonal(cx, cy, dx, dy) if is_diagonal else self.jump_cardinal(cx, cy, dx, dy)
 
-            if jp is None: continue
+            if jp is None:
+                continue
 
             jx, jy = jp
             ji = self.idx(jx, jy)
-            diagonal_penalty = 0.001 if is_diagonal else 0 # discourage diagonal if cardinal path exists -- can remove
+            diagonal_penalty = 0.001 if is_diagonal else 0
             dist = max(abs(jx - cx), abs(jy - cy)) if self.allow_diagonal else (abs(jx - cx) + abs(jy - cy))
-            new_g = 0 if self.in_target_zone(jx, jy) else g_current + dist + diagonal_penalty
+            new_g = g_current + dist + diagonal_penalty
 
             successors.append((new_g, ji, jx, jy))
-        
+
         return successors
 
     def run(
@@ -143,10 +191,9 @@ class FloodFillCalculator:
         visited = set()
         came_from = {}
 
-        ti = self.idx(target.x, target.y)
-        g_score[ti] = 0 
-
-        open_set = [(self.heuristic(target.x, target.y), target.x, target.y)]
+        oi = self.idx(origin.x, origin.y)
+        g_score[oi] = 0 
+        open_set = [(self.heuristic(origin.x, origin.y), origin.x, origin.y)]
         while open_set:
             _, cx, cy = heapq.heappop(open_set)
             ci = self.idx(cx, cy)
@@ -155,28 +202,27 @@ class FloodFillCalculator:
                 continue
             visited.add(ci)
 
-            if cx == origin.x and cy == origin.y:
+            if self.in_target_zone(cx, cy):
                 path = []
-                current = (origin.x, origin.y)
-                while current != (target.x, target.y):
+                current = (cx, cy)
+                while current != (self.origin.x, self.origin.y):
                     path.append(Position(current[0], current[1]))
                     ci = self.idx(*current)
                     if ci not in came_from:
                         break
                     current = came_from[ci]
-                path.append(Position(target.x, target.y))
+                path.append(Position(self.origin.x, self.origin.y))
+                path.reverse()
                 return path
 
-            for new_g, ji, jx, jy in self.identify_successors(cx, cy, g_score[ci]):
+            # came_from stores (px, py) as before, but now pass parent to identify_successors
+            for new_g, ji, jx, jy in self.identify_successors(cx, cy, came_from.get(ci), g_score[ci]):
                 if ji in visited:
                     continue
                 if new_g < g_score[ji]:
                     g_score[ji] = new_g
                     came_from[ji] = (cx, cy)
                     heapq.heappush(open_set, (new_g + self.heuristic(jx, jy), jx, jy))
-            
-            if cx == target.x and cy == target.y and not self.is_walkable(cx, cy):
-                g_score[ti] = math.inf
 
         return []
 
@@ -184,11 +230,11 @@ class FloodFillCalculator:
     def _run_astar(self) -> list[Position]:
         g_score = [math.inf] * self.area
         visited = set()
-        came_from = {}  # idx -> (cx, cy, cost)
+        came_from = {}
 
-        ti = self.idx(self.target.x, self.target.y)
-        g_score[ti] = 0
-        open_set = [(self.heuristic(self.target.x, self.target.y), self.target.x, self.target.y)]
+        oi = self.idx(self.origin.x, self.origin.y)
+        g_score[oi] = 0
+        open_set = [(self.heuristic(self.origin.x, self.origin.y), self.origin.x, self.origin.y)]
 
         while open_set:
             _, cx, cy = heapq.heappop(open_set)
@@ -198,17 +244,17 @@ class FloodFillCalculator:
                 continue
             visited.add(ci)
 
-            if cx == self.origin.x and cy == self.origin.y:
+            if self.in_target_zone(cx, cy):
                 path = []
-                current = (self.origin.x, self.origin.y)
-                while current != (self.target.x, self.target.y):
+                current = (cx, cy)
+                while current != (self.origin.x, self.origin.y):
+                    path.append(Position(current[0], current[1]))
                     ci = self.idx(*current)
                     if ci not in came_from:
                         break
-                    px, py = came_from[ci]
-                    path.append(Position(current[0], current[1]))
-                    current = (px, py)
-                path.append(Position(self.target.x, self.target.y))
+                    current = came_from[ci]
+                path.append(Position(self.origin.x, self.origin.y))
+                path.reverse()
                 return path
 
             for dx, dy in BRIDGE_DELTAS:

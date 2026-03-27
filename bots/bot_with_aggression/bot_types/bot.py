@@ -96,6 +96,7 @@ class Bot(ABC):
 
         dist_to_target = position.distance_squared(self.current_target_pos)
         if dist_to_target <= self.target_distance_squared:
+            print("Reached target")
             self._target_reached(ct)
             return
         
@@ -105,7 +106,6 @@ class Bot(ABC):
             self._set_internal_map(position)
         
         print(f"Time taken: {ct.get_cpu_time_elapsed() - start_time}")
-        return
 
         if not self.distance_map:
             self._set_wandering()

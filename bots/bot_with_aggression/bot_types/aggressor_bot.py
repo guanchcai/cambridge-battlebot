@@ -18,10 +18,12 @@ class Aggressor(Bot):
         return super()._set_internal_map(position)
     
     def _move_to_pos(self, ct, allowed_movements=...):
-        return super()._move_to_pos(ct)
         if self.current_state == BOT_STATE.GOING_TO_TARGET:
             dist = get_skibidi_distance(self.current_target_pos, ct.get_position())
             building_id = ct.get_tile_building_id(self.current_target_pos) if ct.is_in_vision(self.current_target_pos) else None
+            if building_id and connected_to(self.current_target_pos, building_id, EntityType.SENTINEL, False, ct):
+                self._pick_random(ct)
+
             if dist == 0:
                 if (
                     building_id and 
@@ -30,9 +32,9 @@ class Aggressor(Bot):
                 ):
                     ct.fire(self.current_target_pos)
                 
-                b_id = ct.get_tile_building_id(self.current_target_pos)
+                building_id = ct.get_tile_building_id(self.current_target_pos)
                 if (
-                    b_id is None or 
+                    building_id is None or 
                     (
                         (
                             ct.get_entity_type(building_id) == EntityType.ROAD or
@@ -58,8 +60,8 @@ class Aggressor(Bot):
                         building_id is None
                     ):
                         self.build_sentinel(self.current_target_pos, self.current_target_pos.direction_to(self.enemy_pos), ct)
-                    self._set_wandering()
-                    return
+                        self._set_wandering()
+                        return
         return super()._move_to_pos(ct)
     
     def _build_road(self, ct, move_pos, next_direction = None):
@@ -94,19 +96,20 @@ class Aggressor(Bot):
                         ct.get_entity_type(check_id) in PASSABLE and 
                         not connected_to(tile, building_id, EntityType.SENTINEL, False, ct)
                     ):
-                        if check_pos.distance_squared(self.enemy_pos) < check_pos.distance_squared(self.original_pos):
+                        if check_pos.distance_squared(self.enemy_pos) < 169:
                             self.current_target_pos = check_pos
                             self.target_distance_squared = 0
                             self.current_state = BOT_STATE.GOING_TO_TARGET
                             self.distance_map = None
-        elif building_id and ct.get_entity_type(building_id) in CONVEYORS and ct.get_stored_resource(building_id) in [ResourceType.REFINED_AXIONITE, ResourceType.TITANIUM] and tile.distance_squared(self.enemy_pos) < tile.distance_squared(self.original_pos):
-            if self.current_state == BOT_STATE.WANDERING and not connected_to(tile, building_id, EntityType.SENTINEL, False, ct):
+        elif building_id and ct.get_entity_type(building_id) in CONVEYORS and ct.get_stored_resource(building_id) in [ResourceType.REFINED_AXIONITE, ResourceType.TITANIUM] and tile.distance_squared(self.enemy_pos) <= 169:
+            if self.current_state == BOT_STATE.WANDERING and not connected_to(tile, building_id, EntityType.SENTINEL, False, ct) and \
+                not pointed_towards_bot(tile, building_id, ct):
                 self.aggression_targets.append(tile)
         
         if self.current_state == BOT_STATE.GOING_TO_TARGET:
             if is_in_bound(self.current_target_pos, ct) and ct.is_in_vision(self.current_target_pos):
                 check_id = ct.get_tile_building_id(self.current_target_pos)
-                if check_id is not None and ct.get_entity_type(check_id) not in PASSABLE:
+                if (check_id is not None and ct.get_entity_type(check_id) not in PASSABLE) or ct.get_tile_env(self.current_target_pos) == Environment.WALL:
                     self._set_wandering()
                         
     def _read_markers(self, val, marker_pos):

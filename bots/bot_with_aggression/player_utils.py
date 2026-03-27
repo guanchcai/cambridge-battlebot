@@ -119,3 +119,25 @@ def check_for_entity(p: Position, directions: list[Direction], entity: EntityTyp
 
 def get_skibidi_distance(p1: Position, p2: Position):
     return abs(p1.x - p2.x) + abs(p1.y - p2.y)
+
+def pointed_towards_bot(pos: Position, building_id, ct: Controller):
+    if building_id is None:
+        return False
+    try:
+        match ct.get_entity_type(building_id):
+            case EntityType.CONVEYOR:
+                d = ct.get_direction(building_id)
+                bot_id = ct.get_tile_builder_bot_id(pos.add(d))
+                if bot_id and ct.get_team(bot_id) == ct.get_team() and bot_id != ct.get_id():
+                    return True
+            case EntityType.BRIDGE:
+                p = ct.get_bridge_target(building_id)
+                bot_id = ct.get_tile_builder_bot_id(p)
+                if bot_id and ct.get_team(bot_id) == ct.get_team() and bot_id != ct.get_id():
+                    return True
+            case _:
+                return False
+    except Exception:
+        return False
+    
+    return False

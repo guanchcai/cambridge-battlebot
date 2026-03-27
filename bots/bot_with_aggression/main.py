@@ -33,7 +33,6 @@ class Player:
         current_round = ct.get_current_round()
         harvester_cost = ct.get_harvester_cost()[0]
         global_resources = ct.get_global_resources()[0]
-
         etype = ct.get_entity_type()
         match etype:
             case EntityType.CORE:
