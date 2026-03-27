@@ -40,10 +40,15 @@ class Initator(Bot):
             building_id = ct.get_tile_building_id(position)
             if building_id and ct.get_entity_type(building_id) != EntityType.BRIDGE: 
                 if ct.get_action_cooldown() == 0 and ct.get_global_resources()[0] >= ct.get_bridge_cost()[0]:
-                    ct.destroy(position)
-                    ct.build_bridge(position, closest_base_pos)
-            self.replace_beneath = False
-            self._set_wandering()
+                    if ct.can_destroy(position):
+                        ct.destroy(position)
+                    elif ct.can_fire(position):
+                        ct.fire(position)
+                    
+                    if ct.can_build_bridge(position, closest_base_pos):
+                        ct.build_bridge(position, closest_base_pos)
+                        self.replace_beneath = False
+                        self._set_wandering()
             return
 
         if self.replace_beneath:
@@ -156,7 +161,7 @@ class Initator(Bot):
     def _hit_wall(self, wall_pos, ct):
         print("I hit a wall!")
         building_id = ct.get_tile_building_id(wall_pos)
-        if get_from_pos(self.internal_walkable_map, wall_pos, self.map_width) != Environment.WALL:
+        if get_from_pos(self.internal_walkable_map, wall_pos, self.map_width) != Environment.WALL and self.current_state != BOT_STATE.WALKING_BACK:
             self._pick_random(ct)
             return
         if self.current_state == BOT_STATE.WALKING_BACK:
@@ -173,4 +178,4 @@ class Initator(Bot):
 
         else:
             self.current_target_pos = self._find_target(ct)
-            self._move_to_pos()
+            self._move_to_pos(ct)

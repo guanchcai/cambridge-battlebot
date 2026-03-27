@@ -4,6 +4,7 @@ from player_utils import *
 
 class Aggressor(Bot):
     def __init__(self, ct):
+        self.aggression_targets = []
         super().__init__(ct)
 
     def _initialisation(self, ct):
@@ -63,6 +64,16 @@ class Aggressor(Bot):
     def _build_road(self, ct, move_pos, next_direction = None):
         if ct.can_build_road(move_pos):
             ct.build_road(move_pos)
+
+    def update_map(self, ct):
+        self.aggression_targets = []
+        super().update_map(ct)
+        if self.aggression_targets and self.current_state != BOT_STATE.GOING_TO_TARGET:
+            random_target = random.choice(self.aggression_targets)
+            self.current_target_pos = random_target
+            self.target_distance_squared = 0
+            self.current_state = BOT_STATE.GOING_TO_TARGET
+            self.distance_map = None
     
     def _update_tile(self, tile, building_id, ct):
         bot_id = ct.get_tile_builder_bot_id(tile)
@@ -81,16 +92,16 @@ class Aggressor(Bot):
                     ) or (
                         ct.get_entity_type(check_id) in PASSABLE
                     ):
-                        self.current_target_pos = check_pos
-                        self.target_distance_squared = 0
-                        self.current_state = BOT_STATE.GOING_TO_TARGET
-                        self.distance_map = None
-                        break
-            elif self.current_state == BOT_STATE.GOING_TO_TARGET:
-                if is_in_bound(self.current_target_pos, ct) and ct.is_in_vision(self.current_target_pos):
-                    check_id = ct.get_tile_building_id(self.current_target_pos)
-                    if check_id is not None and ct.get_entity_type(check_id) not in PASSABLE:
-                        self._set_wandering(ct)
+                        self.aggression_targets.append(check_pos)
+        elif building_id and ct.get_entity_type(building_id) in CONVEYORS and ct.get_stored_resource(building_id) in [ResourceType.REFINED_AXIONITE, ResourceType.TITANIUM]:
+            if self.current_state == BOT_STATE.WANDERING and not connected_to(tile, building_id, EntityType.SENTINEL, False, ct):
+                self.aggression_targets.append(tile)
+        
+        if self.current_state == BOT_STATE.GOING_TO_TARGET:
+            if is_in_bound(self.current_target_pos, ct) and ct.is_in_vision(self.current_target_pos):
+                check_id = ct.get_tile_building_id(self.current_target_pos)
+                if check_id is not None and ct.get_entity_type(check_id) not in PASSABLE:
+                    self._set_wandering(ct)
                         
     def _read_markers(self, val, marker_pos):
         return super()._read_markers(val, marker_pos)
@@ -125,7 +136,7 @@ class Aggressor(Bot):
             
         if ct.can_build_sentinel(p, d):
             building_id = ct.get_tile_building_id(p.add(d))
-            if building_id and ct.get_entity_type(building_id) == EntityType.HARVESTER:
+            if building_id and ct.get_entity_type(building_id) == EntityType.HARVESTER and d in CARDINAL_DIRECTIONS:
                 d = d.rotate_left()
             ct.build_sentinel(p, d)
             self._set_wandering()
