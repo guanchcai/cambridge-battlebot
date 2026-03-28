@@ -163,6 +163,10 @@ class Bot(ABC):
                 
             self._update_tile(tile, building_id, ct)
 
+            bot_id = ct.get_tile_builder_bot_id(tile)
+            if bot_id:
+                env = Environment.WALL
+                envp = env
             set_from_pos(self.internal_map, tile, env, w)
             set_from_pos(self.internal_walkable_map, tile, envp, w)
             

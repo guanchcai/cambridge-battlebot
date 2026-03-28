@@ -4,6 +4,7 @@ from bot_types.initiator_bot import Initator
 from bot_types.bot import Bot
 from bot_types.aggressor_bot import Aggressor
 from bot_types.healer import Healer
+from bot_types.waller import Waller
 
 class BOT_TYPE(Enum):
     NORMAL = 1
@@ -22,7 +23,7 @@ class Player:
         # Core variables
         self.num_spawned = 0
         self.bomber_spawned = 0
-        self.spawn_queue = [Direction.NORTH, Direction.NORTHEAST, Direction.SOUTHWEST]
+        self.spawn_queue = [Direction.SOUTH, Direction.NORTHEAST, Direction.SOUTHWEST]
 
         self.bot_type: Bot | None = None
 
@@ -37,6 +38,10 @@ class Player:
         match etype:
             case EntityType.CORE:
                 print(self.spawn_queue)
+                if current_round == 100:
+                    self.spawn_queue.append(Direction.SOUTH)
+                if current_round == 20:
+                    self.spawn_queue.append(Direction.NORTH)
                 bot_id = ct.get_tile_builder_bot_id(position)
                 if bot_id is None:
                     if ct.can_spawn(position):
@@ -64,8 +69,6 @@ class Player:
                         ct.spawn_builder(spawn_pos)
                         self.num_spawned += 1
                         return
-                if current_round == 100:
-                    self.spawn_queue.append(Direction.SOUTH)
             case EntityType.SENTINEL | EntityType.GUNNER:
                 candidate = None
                 
@@ -116,8 +119,12 @@ class Player:
     def decide_bot_type(self, position: Position, ct: Controller):
         core_pos = ct.get_position(ct.get_tile_building_id(position))
         if get_skibidi_distance(core_pos, position) == 1:
+            if core_pos.direction_to(position) == Direction.NORTH and ct.get_current_round() >= 20:
+                return Waller(ct)
             return Initator(ct)
         elif get_skibidi_distance(core_pos, position) == 2:
+            if ct.get_current_round() >= 50 and random.random() >= 0.8:
+                return Initator(ct)
             return Aggressor(ct)
         else:
             return Healer(ct)

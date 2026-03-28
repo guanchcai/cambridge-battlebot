@@ -120,6 +120,9 @@ def check_for_entity(p: Position, directions: list[Direction], entity: EntityTyp
 def get_skibidi_distance(p1: Position, p2: Position):
     return abs(p1.x - p2.x) + abs(p1.y - p2.y)
 
+def get_fanum_tax_distance(p1: Position, p2: Position):
+    return max(abs(p1.x - p2.x), abs(p1.y - p2.y))
+
 def pointed_towards_bot(pos: Position, building_id, ct: Controller):
     if building_id is None:
         return False
@@ -141,3 +144,16 @@ def pointed_towards_bot(pos: Position, building_id, ct: Controller):
         return False
     
     return False
+
+def get_adjacent_diagonal(d: Direction):
+    match d:
+        case Direction.NORTH:
+            return (Direction.NORTHEAST, Direction.NORTHWEST)
+        case Direction.SOUTH:
+            return (Direction.SOUTHEAST, Direction.SOUTHWEST)
+        case Direction.EAST:
+            return (Direction.SOUTHEAST, Direction.NORTHEAST)
+        case Direction.WEST:
+            return (Direction.SOUTHWEST, Direction.NORTHWEST)
+    
+    raise ValueError

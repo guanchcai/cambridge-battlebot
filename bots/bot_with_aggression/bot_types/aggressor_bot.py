@@ -79,10 +79,6 @@ class Aggressor(Bot):
             self.distance_map = None
     
     def _update_tile(self, tile, building_id, ct):
-        bot_id = ct.get_tile_builder_bot_id(tile)
-        if bot_id:
-            set_from_pos(self.internal_walkable_map, tile, Environment.WALL, self.map_width)
-
         if building_id and ct.get_entity_type(building_id) == EntityType.HARVESTER and tile.distance_squared(self.enemy_pos) <= 13 ** 2:
             if self.current_state == BOT_STATE.WANDERING:
                 for d in CARDINAL_DIRECTIONS:
@@ -120,9 +116,9 @@ class Aggressor(Bot):
     
     def _hit_wall(self, wall_pos, ct):
         print("I hit a wall!")
-        if get_from_pos(self.internal_walkable_map, wall_pos, self.map_width) != Environment.WALL:
+        bot_id = ct.get_tile_builder_bot_id(wall_pos)
+        if bot_id:
             self._pick_random(ct)
-            return
         self.distance_map = None
     
     def _target_reached(self, ct):

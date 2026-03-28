@@ -11,7 +11,6 @@ class Initator(Bot):
         self.visited_ores = set()
 
         self.previous_pos = None
-        self.wall_building = False
 
         super().__init__(ct)
 
@@ -51,19 +50,29 @@ class Initator(Bot):
     def _move_to_pos(self, ct: Controller):
         position = ct.get_position()
         closest_base_pos = self.original_pos.add(self.original_pos.direction_to(position))
+        building_id = ct.get_tile_building_id(self.current_target_pos) if self.current_target_pos and ct.is_in_vision(self.current_target_pos) else None
+
         if closest_base_pos.distance_squared(position) <= 9 and self.current_state == BOT_STATE.WALKING_BACK:
             building_id = ct.get_tile_building_id(position)
-            if building_id and ct.get_entity_type(building_id) != EntityType.BRIDGE: 
-                if ct.get_action_cooldown() == 0 and ct.get_global_resources()[0] >= ct.get_bridge_cost()[0]:
+            is_bridge = building_id and ct.get_entity_type(building_id) == EntityType.BRIDGE
+
+            if not is_bridge:
+                can_afford = ct.get_action_cooldown() == 0 and ct.get_global_resources()[0] >= ct.get_bridge_cost()[0]
+                if not can_afford:
+                    return
+
+                if building_id:
                     if ct.can_destroy(position):
                         ct.destroy(position)
                     elif ct.can_fire(position):
                         ct.fire(position)
-                    
-                    if ct.can_build_bridge(position, closest_base_pos):
-                        ct.build_bridge(position, closest_base_pos)
-                        self.replace_beneath = False
-                        self._set_wandering()
+                    return  # Wait for next tick before building
+
+                if ct.can_build_bridge(position, closest_base_pos):
+                    ct.build_bridge(position, closest_base_pos)
+                    self.replace_beneath = False
+
+            self._set_wandering()
             return
 
         if self.replace_beneath:
@@ -108,18 +117,17 @@ class Initator(Bot):
                                     ct.destroy(position)
                                     ct.build_bridge(position, chosen)
                         print("YO I BUILT A BRIDGE IM BOUTTA BUUUUST")
-                        self._set_wandering()
+                        
+                        self.current_state = BOT_STATE.GOING_TO_TARGET
+                        self.current_target_pos = chosen
+                        self.previous_target_pos = None
+                        self.target_distance_squared = 0
+                        self.distance_map = None
 
             return
 
         if self.current_state == BOT_STATE.GOING_TO_TARGET:
-            dist = get_skibidi_distance(self.current_target_pos, ct.get_position())
-            building_id = ct.get_tile_building_id(self.current_target_pos) if ct.is_in_vision(self.current_target_pos) else None
-            if self.wall_building and building_id and ct.get_entity_type(building_id) != EntityType.ROAD:
-                self.wall_building = False
-                self._set_wandering()
-                print("Already has a wall there")
-                return
+            dist = get_skibidi_distance(self.current_target_pos, position)
             
             if dist == 0:
                 if (
@@ -129,9 +137,9 @@ class Initator(Bot):
                 ):
                     ct.fire(self.current_target_pos)
                 
-                b_id = ct.get_tile_building_id(self.current_target_pos)
+                building_id = ct.get_tile_building_id(self.current_target_pos)
                 if (
-                    b_id is None or 
+                    building_id is None or 
                     (
                         ct.get_entity_type(building_id) == EntityType.ROAD and 
                         ct.get_team(building_id) == ct.get_team()
@@ -139,9 +147,6 @@ class Initator(Bot):
                 ):
                     if ct.get_tile_env(self.current_target_pos) in MINEABLE:
                         if ct.get_action_cooldown() == 0 and ct.get_global_resources()[0] >= ct.get_harvester_cost()[0]:
-                            self._pick_random(ct, CARDINAL_DIRECTIONS)
-                    elif self.wall_building:
-                        if ct.get_action_cooldown() == 0 and ct.get_global_resources()[0] >= ct.get_sentinel_cost()[0]:
                             self._pick_random(ct, CARDINAL_DIRECTIONS)
                     else:
                         print("Trying to connect a bridge")
@@ -151,53 +156,28 @@ class Initator(Bot):
                         self.replace_beneath = True
                         return
             elif dist == 1 and ct.get_tile_env(self.current_target_pos) in MINEABLE:
-                if ct.get_action_cooldown() == 0 and ct.get_global_resources()[0] >= ct.get_harvester_cost()[0]:
-                    if  (
-                        (
-                            # ct.get_entity_type(building_id) in CONVEYORS or
-                            ct.get_entity_type(building_id) == EntityType.ROAD
-                        ) and 
-                        ct.get_team(building_id) == ct.get_team()
-                    ):
-                        ct.destroy(self.current_target_pos)
-                    building_id = ct.get_tile_building_id(self.current_target_pos)
-                    if (
-                        building_id is None
-                    ):
-                        ct.build_harvester(self.current_target_pos)
+                can_afford = ct.get_action_cooldown() == 0 and ct.get_global_resources()[0] >= ct.get_harvester_cost()[0]
+                already_harvesting = building_id and ct.get_entity_type(building_id) == EntityType.HARVESTER
+                own_building = (
+                    building_id and
+                    ct.get_entity_type(building_id) != EntityType.HARVESTER and
+                    ct.get_team(building_id) == ct.get_team()
+                )
+
+                if already_harvesting or (can_afford and own_building):
+                    if can_afford and not already_harvesting:
+                        if own_building:
+                            ct.destroy(self.current_target_pos)
+
+                        if ct.get_tile_building_id(self.current_target_pos) is None:
+                            ct.build_harvester(self.current_target_pos)
+
                     self.visited_ores.add(self.current_target_pos)
                     self.target_distance_squared = 0
                     self.current_state = BOT_STATE.WALKING_BACK
                     self.current_target_pos = self.original_pos
                     self.replace_beneath = True
                     return
-                elif building_id and ct.get_entity_type(building_id) == EntityType.HARVESTER:
-                    self.visited_ores.add(self.current_target_pos)
-                    self.target_distance_squared = 0
-                    self.current_state = BOT_STATE.WALKING_BACK
-                    self.current_target_pos = self.original_pos
-                    self.replace_beneath = True
-                    return
-            elif dist == 1 and self.wall_building:
-                if ct.get_action_cooldown() == 0 and ct.get_global_resources()[0] >= ct.get_sentinel_cost()[0]:
-                    if  (
-                        (
-                            # ct.get_entity_type(building_id) in CONVEYORS or
-                            ct.get_entity_type(building_id) == EntityType.ROAD
-                        ) and 
-                        ct.get_team(building_id) == ct.get_team()
-                    ):
-                        ct.destroy(self.current_target_pos)
-                    building_id = ct.get_tile_building_id(self.current_target_pos)
-                    if (
-                        building_id is None and ct.can_build_sentinel(self.current_target_pos, self.current_target_pos.direction_to(self.enemy_pos))
-                    ):
-                        self.build_sentinel(self.current_target_pos, self.current_target_pos.direction_to(self.enemy_pos), ct)
-                        self.wall_building = False
-                        self._set_wandering()
-                    return
-
-
         
         super()._move_to_pos(ct, CARDINAL_DIRECTIONS if self.current_state == BOT_STATE.WALKING_BACK else DIRECTIONS)
 
@@ -214,13 +194,13 @@ class Initator(Bot):
     
     def _build_road(self, ct: Controller, move_pos):
         print(f"Trying to build road at position: {move_pos}")
-        if self.current_state == BOT_STATE.WALKING_BACK:
+        if self.current_state == BOT_STATE.WALKING_BACK and not self.replace_beneath:
             next_position = self.distance_map[0] if move_pos != self.distance_map[0] else self.distance_map[1]
             if get_skibidi_distance(next_position, move_pos) == 1:
                 next_direction = move_pos.direction_to(next_position)
                 if ct.can_destroy(move_pos):
                     building_id = ct.get_tile_building_id(move_pos)
-                    if ct.get_entity_type(building_id) == EntityType.BRIDGE:
+                    if ct.get_entity_type(building_id) not in [EntityType.CONVEYOR, EntityType.ROAD, EntityType.MARKER]:
                         self._set_wandering()
                         return
                     if not (ct.get_entity_type(building_id) == EntityType.CONVEYOR and ct.get_direction(building_id) == next_direction):
@@ -230,7 +210,7 @@ class Initator(Bot):
             else:
                 if ct.can_destroy(move_pos):
                     building_id = ct.get_tile_building_id(move_pos)
-                    if not (ct.get_entity_type(building_id) == EntityType.BRIDGE and ct.get_bridge_target(building_id) == next_position):
+                    if ct.get_entity_type(building_id) != EntityType.BRIDGE:
                         ct.destroy(move_pos)
                 if ct.can_build_bridge(move_pos, next_position):
                     ct.build_bridge(move_pos, next_position)
@@ -248,8 +228,8 @@ class Initator(Bot):
                     self.visited_ores.add(tile)
                     self._set_wandering()
                 elif building_id and ct.get_entity_type(building_id) == EntityType.HARVESTER:
-                    self.target_distance_squared = 1
-                    self.distance_map = None
+                    self.visited_ores.add(tile)
+                    self._set_wandering()
             if tile not in self.ore_sites:
                 self.ore_sites.add(tile)
                 if self.current_state == BOT_STATE.WANDERING:
@@ -264,23 +244,7 @@ class Initator(Bot):
                         self.distance_map = None
                     else:
                         self.visited_ores.add(tile)
-            if building_id and self.current_state == BOT_STATE.WANDERING and ct.get_entity_type(building_id) == EntityType.HARVESTER and ct.get_team(building_id) == ct.get_team():
-                conveyor_pos = check_for_entity(tile, CARDINAL_DIRECTIONS, EntityType.CONVEYOR, ct, ct.get_team())
-                bridge_pos = check_for_entity(tile, CARDINAL_DIRECTIONS, EntityType.CONVEYOR, ct, ct.get_team())
-                if conveyor_pos or bridge_pos:
-                    for d in CARDINAL_DIRECTIONS:
-                        check_pos = tile.add(d)
-                        if not (is_in_bound(check_pos, ct) and ct.is_in_vision(check_pos)) or ct.get_tile_env(check_pos) != Environment.EMPTY:
-                            continue
-                        check_id = ct.get_tile_building_id(check_pos)
-                        if check_id is None or ct.get_entity_type(check_id) == EntityType.ROAD:
-                            self.current_target_pos = check_pos
-                            self.target_distance_squared = 1
-                            self.current_state = BOT_STATE.GOING_TO_TARGET
-                            self.distance_map = None
-                            self.wall_building = True
-                            return
-        elif building_id and ct.get_entity_type(building_id) == EntityType.BRIDGE and self.current_state == BOT_STATE.WANDERING and ct.get_team(building_id) == ct.get_team():
+        if building_id and ct.get_entity_type(building_id) == EntityType.BRIDGE and self.current_state == BOT_STATE.WANDERING and ct.get_team(building_id) == ct.get_team():
             target_pos = ct.get_bridge_target(building_id)
             if not (ct.is_in_vision(target_pos) and is_in_bound(target_pos, ct)):
                 return
@@ -309,8 +273,8 @@ class Initator(Bot):
     def _hit_wall(self, wall_pos, ct):
         print("I hit a wall!")
         print(wall_pos)
-        building_id = ct.get_tile_building_id(wall_pos)
-        if get_from_pos(self.internal_walkable_map, wall_pos, self.map_width) != Environment.WALL and self.current_state != BOT_STATE.WALKING_BACK:
+        bot_id = ct.get_tile_builder_bot_id(wall_pos)
+        if bot_id and self.current_state != BOT_STATE.WALKING_BACK:
             self._pick_random(ct)
             self.distance_map = None
             return
@@ -328,21 +292,3 @@ class Initator(Bot):
         else:
             self.current_target_pos = self._find_target(ct)
             self._move_to_pos(ct)
-
-    def build_sentinel(self, p: Position, d: Direction, ct: Controller):
-        harvester_pos = check_for_entity(p, CARDINAL_DIRECTIONS, EntityType.HARVESTER, ct)
-
-        if harvester_pos:
-            if check_for_entity(harvester_pos, CARDINAL_DIRECTIONS, EntityType.SENTINEL, ct, ct.get_team()):
-                if ct.can_build_barrier(p):
-                    ct.build_barrier(p)
-                    self._set_wandering()
-                return
-            
-        if ct.can_build_sentinel(p, d):
-            building_id = ct.get_tile_building_id(p.add(d))
-            if building_id and ct.get_entity_type(building_id) == EntityType.HARVESTER and d in CARDINAL_DIRECTIONS:
-                d = d.rotate_left()
-            ct.build_sentinel(p, d)
-            self._set_wandering()
-            return
