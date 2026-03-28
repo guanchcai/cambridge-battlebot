@@ -5,7 +5,7 @@ from bot_types.bot import Bot
 from bot_types.aggressor_bot import Aggressor
 from bot_types.healer import Healer
 from bot_types.waller import Waller
-
+import time
 class BOT_TYPE(Enum):
     NORMAL = 1
     AGGRESSOR = 2
@@ -28,6 +28,7 @@ class Player:
         self.spawn_queue = [Direction.SOUTH, Direction.NORTHEAST, Direction.SOUTHWEST]
 
         self.bot_type: Bot | None = None
+        random.seed(time.time())
 
     def run(self, ct: Controller) -> None:
         map_height = ct.get_map_height()
@@ -37,13 +38,11 @@ class Player:
         harvester_cost = ct.get_harvester_cost()[0]
         global_resources = ct.get_global_resources()[0]
         etype = ct.get_entity_type()
-        if current_round >= 800:
-            return
         match etype:
             case EntityType.CORE:
                 print(self.spawn_queue)
                 if current_round == 100:
-                    self.spawn_queue.append(Direction.SOUTH)
+                    self.spawn_queue.append(Direction.NORTH)
                 if current_round == 20:
                     self.spawn_queue.append(Direction.NORTH)
                 bot_id = ct.get_tile_builder_bot_id(position)
@@ -52,9 +51,9 @@ class Player:
                         ct.spawn_builder(position)
                         
                 if self.spawn_queue:
-                    direction = self.spawn_queue[0] if self.spawn_queue else random.choice(CARDINAL_DIRECTIONS)
+                    direction = self.spawn_queue[0]
                     spawn_pos = position.add(direction)
-                    if ct.can_spawn(spawn_pos):
+                    if ct.can_spawn(spawn_pos) and global_resources >= harvester_cost * 1.5:
                         ct.spawn_builder(spawn_pos)
                         self.num_spawned += 1
                         self.spawn_queue.pop(0)

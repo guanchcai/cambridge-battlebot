@@ -72,7 +72,6 @@ class Bot(ABC):
     def _set_wandering(self):
         self.current_state = BOT_STATE.WANDERING
         self.current_target_pos = None
-        self.previous_target_pos = None
         self.target_distance_squared = 16
         self.distance_map = None
 

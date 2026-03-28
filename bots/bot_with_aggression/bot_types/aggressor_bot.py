@@ -6,6 +6,8 @@ from player_utils import *
 class Aggressor(Bot):
     def __init__(self, ct):
         self.aggression_targets = []
+        self.previous_pos = None
+        self.blocking_jump_point = False
         super().__init__(ct)
 
     def _initialisation(self, ct):
@@ -19,13 +21,23 @@ class Aggressor(Bot):
         return super()._set_internal_map(position)
     
     def _move_to_pos(self, ct: Controller):
+        position = ct.get_position()
+        if self.blocking_jump_point:
+            self.blocking_jump_point = False
+            bot_id = ct.get_tile_builder_bot_id(self.previous_pos)
+            building_id = ct.get_tile_building_id(self.previous_pos)
+            if bot_id is None and (building_id is None or ct.get_entity_type(building_id) in [EntityType.ROAD, EntityType.MARKER]):
+                if ct.can_destroy(self.previous_pos):
+                    ct.destroy(self.previous_pos)
+                if ct.can_build_barrier(self.previous_pos):
+                    ct.build_barrier(self.previous_pos)
+                    return
+
         # Check if target is still valid
         if self.current_state == BOT_STATE.GOING_TO_TARGET:
             if is_in_bound(self.current_target_pos, ct) and ct.is_in_vision(self.current_target_pos):
                 check_id = ct.get_tile_building_id(self.current_target_pos)
                 b_id = ct.get_tile_builder_bot_id(self.current_target_pos)
-                print(f"Launcher nearby: {check_for_entity(self.current_target_pos, DIRECTIONS, EntityType.LAUNCHER, ct, other_team(ct)) is not None}")
-                print(self.distance_map)
                 if ((check_id is not None or b_id is not None) and ct.get_entity_type(check_id) not in PASSABLE) or \
                     ct.get_tile_env(self.current_target_pos) == Environment.WALL or \
                     check_for_entity(self.current_target_pos, DIRECTIONS, EntityType.LAUNCHER, ct, other_team(ct)) is not None:
@@ -75,7 +87,13 @@ class Aggressor(Bot):
                         self.build_sentinel(self.current_target_pos, self.current_target_pos.direction_to(self.enemy_pos), ct)
                         self._set_wandering()
                         return
-        return super()._move_to_pos(ct)
+        super()._move_to_pos(ct)
+
+        if position and position != ct.get_position():
+            if self.is_choke_point(position, ct):
+                self.blocking_jump_point = True
+                self.previous_pos = position
+                return
     
     def _build_road(self, ct, move_pos, next_direction = None):
         if ct.can_build_road(move_pos):
@@ -95,7 +113,7 @@ class Aggressor(Bot):
 
         # Building sentinels next to harvesters
         if building_id and ct.get_entity_type(building_id) == EntityType.HARVESTER and tile.distance_squared(self.enemy_pos) <= 13 ** 2:
-            if self.current_state == BOT_STATE.WANDERING:
+            if self.current_state == BOT_STATE.WANDERING and tile != self.previous_target_pos:
                 for d in CARDINAL_DIRECTIONS:
                     check_pos = tile.add(d)
                     if not (ct.is_in_vision(check_pos) and is_in_bound(check_pos, ct)):
@@ -116,11 +134,16 @@ class Aggressor(Bot):
         # Hijacking enemy conveyor chain
         elif building_id and ct.get_entity_type(building_id) in CONVEYORS and ct.get_stored_resource(building_id) in [ResourceType.REFINED_AXIONITE, ResourceType.TITANIUM] and tile.distance_squared(self.enemy_pos) <= 13 ** 2:
             targetted_pos = get_targetted_pos(tile, ct)
+            has_launcher = (
+                check_for_entity(tile, DIRECTIONS, EntityType.LAUNCHER, ct, other_team(ct)) is not None or
+                (targetted_pos and check_for_entity(targetted_pos, DIRECTIONS, EntityType.LAUNCHER, ct, other_team(ct)) is not None)
+            )
             if (
-                self.current_state == BOT_STATE.WANDERING and 
+                self.current_state == BOT_STATE.WANDERING and
+                tile != self.previous_target_pos and
+                not has_launcher and
                 not connected_to(tile, building_id, EntityType.SENTINEL, False, ct) and
-                not pointed_towards_bot(tile, building_id, ct) and 
-                (targetted_pos is None or check_for_entity(targetted_pos, DIRECTIONS, EntityType.LAUNCHER, ct, other_team(ct)) is None)
+                not pointed_towards_bot(tile, building_id, ct)
             ):
                 targetted_id = ct.get_tile_building_id(targetted_pos) if targetted_pos else None
                 if targetted_id and ct.get_team(building_id) != ct.get_team() and ct.get_entity_type(targetted_id) != EntityType.CORE:
@@ -166,3 +189,39 @@ class Aggressor(Bot):
             ct.build_sentinel(p, d)
             self._set_wandering()
             return
+        
+    def is_choke_point(self, position: Position, ct: Controller) -> bool:
+        def blocked(px, py):
+            pos = Position(px, py)
+            if not is_in_bound(pos, ct):
+                return True  # out of bounds = impassable
+            if not ct.is_in_vision(pos):
+                return True  # treat unseen tiles as blocked
+            b_id = ct.get_tile_building_id(pos)
+            is_walled = (ct.get_tile_env(pos) == Environment.WALL) or \
+                        (b_id and ct.get_entity_type(b_id) not in PASSABLE)
+            return is_walled
+
+        x, y = position.x, position.y
+
+        # Cardinal choke points: walls on both sides of an axis
+        if blocked(x, y + 1) and blocked(x, y - 1):
+            return True
+        if blocked(x + 1, y) and blocked(x - 1, y):
+            return True
+
+        # Diagonal choke: the two open diagonal tiles are the only passage
+        if not blocked(x, y) and not blocked(x - 1, y - 1) \
+                and blocked(x - 1, y) and blocked(x, y - 1):
+            return True
+        if not blocked(x, y) and not blocked(x - 1, y + 1) \
+                and blocked(x - 1, y) and blocked(x, y + 1):
+            return True
+        if not blocked(x, y) and not blocked(x + 1, y + 1) \
+                and blocked(x + 1, y) and blocked(x, y + 1):
+            return True
+        if not blocked(x, y) and not blocked(x + 1, y - 1) \
+                and blocked(x + 1, y) and blocked(x, y - 1):
+            return True
+
+        return False

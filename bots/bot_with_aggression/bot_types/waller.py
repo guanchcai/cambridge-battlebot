@@ -21,6 +21,24 @@ class Waller(Bot):
             fdist = get_fanum_tax_distance(self.current_target_pos, position)
             building_id = ct.get_tile_building_id(self.current_target_pos) if ct.is_in_vision(self.current_target_pos) else None
             bot_id = ct.get_tile_builder_bot_id(self.current_target_pos) if ct.is_in_vision(self.current_target_pos) else None
+            
+            corner = None
+            for d in CARDINAL_DIRECTIONS:
+                check_pos = self.current_target_pos.add(d)
+                if not is_in_bound(check_pos, ct) or not ct.is_in_vision(check_pos):
+                    continue
+                b_id = ct.get_tile_building_id(check_pos)
+                if b_id and ct.get_entity_type(b_id) in CONVEYORS:
+                    for diag in get_adjacent_diagonal(d):
+                        diag_pos = self.current_target_pos.add(diag)
+                        if not is_in_bound(diag_pos, ct) or not ct.is_in_vision(diag_pos):
+                            continue
+                        diag_b_id = ct.get_tile_building_id(diag_pos)
+                        if diag_b_id is None or ct.get_entity_type(diag_b_id) not in CONVEYORS:
+                            corner = check_pos
+                            break
+                if corner is not None:
+                    break
             if (bot_id and bot_id != ct.get_id()) or (building_id and ct.get_entity_type(building_id) != EntityType.ROAD):
                 self._set_wandering()
                 print("Already has a wall there")
@@ -40,29 +58,12 @@ class Waller(Bot):
                     (
                         ct.get_entity_type(building_id) == EntityType.ROAD and 
                         ct.get_team(building_id) == ct.get_team() and 
-                        ct.get_global_resources()[0] >= ct.get_barrier_cost()[0]
+                        ct.get_global_resources()[0] >= (ct.get_launcher_cost()[0] if corner else ct.get_barrier_cost()[0]) 
                     )
                 ):
                     self._pick_random(ct)
                     return
             elif fdist == 1 and (building_id is None or ct.get_team(building_id) == ct.get_team()):
-                corner = None
-                for d in CARDINAL_DIRECTIONS:
-                    check_pos = self.current_target_pos.add(d)
-                    if not is_in_bound(check_pos, ct):
-                        continue
-                    building_id = ct.get_tile_building_id(check_pos)
-                    if building_id and ct.get_entity_type(building_id) in CONVEYORS:
-                        for diag in get_adjacent_diagonal(d):
-                            diag_pos = self.current_target_pos.add(diag)
-                            if not is_in_bound(diag_pos, ct):
-                                continue
-                            diag_b_id = ct.get_tile_building_id(diag_pos)
-                            if diag_b_id is None or ct.get_entity_type(diag_b_id) not in CONVEYORS:
-                                corner = check_pos
-                                break
-                    if corner is not None:
-                        break
                 can_afford = ct.get_action_cooldown() == 0 and (
                     ct.get_global_resources()[0] >= ct.get_launcher_cost()[0] if corner is not None else ct.get_global_resources()[0] >= ct.get_barrier_cost()[0]
                 )
@@ -84,7 +85,7 @@ class Waller(Bot):
                         self._set_wandering()
                     return
         
-        super()._move_to_pos(ct, CARDINAL_DIRECTIONS if self.current_state == BOT_STATE.WALKING_BACK else DIRECTIONS)
+        super()._move_to_pos(ct, DIRECTIONS)
 
     def _build_road(self, ct: Controller, move_pos):
         print(f"Trying to build road at position: {move_pos}")
@@ -105,7 +106,6 @@ class Waller(Bot):
                         self.target_distance_squared = 0
                         self.current_state = BOT_STATE.GOING_TO_TARGET
                         self.distance_map = None
-                        self.wall_building = True
                         return                        
 
     def _find_target(self, ct):
@@ -114,7 +114,7 @@ class Waller(Bot):
         return self._nearest_unexplored(ct.get_position(), ct)
     
     def _nearest_unexplored(self, pos, ct: Controller):
-        allowed_range = math.floor(10 * ct.get_current_round() / 200)
+        allowed_range = math.floor(5 * (ct.get_current_round() / 200 + 1))
         return limit(
             Position(self.original_pos.x + random.randint(-allowed_range, allowed_range), 
                      self.original_pos.y + random.randint(-allowed_range, allowed_range)),

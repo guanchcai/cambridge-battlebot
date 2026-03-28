@@ -18,6 +18,10 @@ DIR_TO_DELTA_DICT = {
     Direction.SOUTH: Position(0, 1),
     Direction.EAST: Position(1, 0),
     Direction.WEST: Position(-1, 0),
+    Direction.NORTHEAST: Position(1, -1),
+    Direction.NORTHWEST: Position(-1, -1),
+    Direction.SOUTHEAST: Position(1, 1),
+    Direction.SOUTHWEST: Position(-1, 1),
 }
 
 OFFSETS = [(dx, dy) for dx in range(-1, 2) for dy in range(-1, 2)]
@@ -131,7 +135,7 @@ def pointed_towards_bot(pos: Position, building_id, ct: Controller):
         if targetted_pos is None:
             return False
         b_id = ct.get_tile_builder_bot_id(targetted_pos)
-        return b_id is not None
+        return b_id is not None and ct.get_team(b_id) == ct.get_team()
     except Exception:
         return False
 
