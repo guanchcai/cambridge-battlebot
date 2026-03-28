@@ -51,6 +51,14 @@ class Initator(Bot):
         position = ct.get_position()
         closest_base_pos = self.original_pos.add(self.original_pos.direction_to(position))
         building_id = ct.get_tile_building_id(self.current_target_pos) if self.current_target_pos and ct.is_in_vision(self.current_target_pos) else None
+        if self.current_state == BOT_STATE.WALKING_BACK or self.current_state == BOT_STATE.GOING_TO_TARGET:
+            current_id = ct.get_tile_building_id(position)
+            if (
+                current_id and 
+                ct.get_team(current_id) != ct.get_team() and
+                ct.can_fire(position)
+            ):
+                ct.fire(position)
 
         if closest_base_pos.distance_squared(position) <= 9 and self.current_state == BOT_STATE.WALKING_BACK:
             building_id = ct.get_tile_building_id(position)
@@ -64,9 +72,6 @@ class Initator(Bot):
                 if building_id:
                     if ct.can_destroy(position):
                         ct.destroy(position)
-                    elif ct.can_fire(position):
-                        ct.fire(position)
-                    return  # Wait for next tick before building
 
                 if ct.can_build_bridge(position, closest_base_pos):
                     ct.build_bridge(position, closest_base_pos)
@@ -77,7 +82,6 @@ class Initator(Bot):
 
         if self.replace_beneath:
             self._set_internal_map(position)
-            print(self.current_target_pos)
             if position == self.distance_map[0]:
                 self.distance_map.pop(0)
             if not self.distance_map:
@@ -99,7 +103,7 @@ class Initator(Bot):
                                     ct.build_conveyor(position, chosen)
                             case EntityType.BRIDGE:
                                 self._set_wandering()
-                                return
+                                
             else:
                 chosen = self.distance_map[0]
                 building_id = ct.get_tile_building_id(position)
@@ -129,14 +133,7 @@ class Initator(Bot):
         if self.current_state == BOT_STATE.GOING_TO_TARGET:
             dist = get_skibidi_distance(self.current_target_pos, position)
             
-            if dist == 0:
-                if (
-                    building_id and 
-                    ct.get_team(building_id) != ct.get_team() and
-                    ct.can_fire(self.current_target_pos)
-                ):
-                    ct.fire(self.current_target_pos)
-                
+            if dist == 0:                
                 building_id = ct.get_tile_building_id(self.current_target_pos)
                 if (
                     building_id is None or 
@@ -210,7 +207,7 @@ class Initator(Bot):
             else:
                 if ct.can_destroy(move_pos):
                     building_id = ct.get_tile_building_id(move_pos)
-                    if ct.get_entity_type(building_id) != EntityType.BRIDGE:
+                    if ct.get_entity_type(building_id) not in [EntityType.BRIDGE, EntityType.HARVESTER]:
                         ct.destroy(move_pos)
                 if ct.can_build_bridge(move_pos, next_position):
                     ct.build_bridge(move_pos, next_position)
@@ -239,8 +236,8 @@ class Initator(Bot):
                         ct.get_entity_type(building_id) in PASSABLE
                     ):
                         self.target_distance_squared = 1 if ct.get_entity_type(building_id) == EntityType.HARVESTER else 0
-                        self.current_target_pos = self._find_target(ct)
                         self.current_state = BOT_STATE.GOING_TO_TARGET
+                        self.current_target_pos = self._find_target(ct)
                         self.distance_map = None
                     else:
                         self.visited_ores.add(tile)

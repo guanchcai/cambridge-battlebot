@@ -162,6 +162,16 @@ class FloodFillCalculator:
             successors.append((new_g, ji, jx, jy))
 
         return successors
+    
+    def _any_target_walkable(self) -> bool:
+        tx, ty = self.target.x, self.target.y
+        r = math.isqrt(self.target_distance_squared)
+        for dx in range(-r, r + 1):
+            for dy in range(-r, r + 1):
+                if dx * dx + dy * dy <= self.target_distance_squared:
+                    if self.is_walkable(tx + dx, ty + dy):
+                        return True
+        return False
 
     def run(
         self,
@@ -184,6 +194,8 @@ class FloodFillCalculator:
         )
 
         if not self.is_in_bound(target.x, target.y):
+            return []
+        if not self._any_target_walkable():
             return []
         if not allow_diagonal:
             return self._run_astar()

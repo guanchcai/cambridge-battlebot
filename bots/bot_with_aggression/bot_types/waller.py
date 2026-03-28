@@ -21,7 +21,7 @@ class Waller(Bot):
             fdist = get_fanum_tax_distance(self.current_target_pos, position)
             building_id = ct.get_tile_building_id(self.current_target_pos) if ct.is_in_vision(self.current_target_pos) else None
             bot_id = ct.get_tile_builder_bot_id(self.current_target_pos) if ct.is_in_vision(self.current_target_pos) else None
-            if bot_id or (building_id and ct.get_entity_type(building_id) != EntityType.ROAD):
+            if (bot_id and bot_id != ct.get_id()) or (building_id and ct.get_entity_type(building_id) != EntityType.ROAD):
                 self._set_wandering()
                 print("Already has a wall there")
                 return
@@ -39,12 +39,13 @@ class Waller(Bot):
                     building_id is None or 
                     (
                         ct.get_entity_type(building_id) == EntityType.ROAD and 
-                        ct.get_team(building_id) == ct.get_team()
+                        ct.get_team(building_id) == ct.get_team() and 
+                        ct.get_global_resources()[0] >= ct.get_barrier_cost()[0]
                     )
                 ):
                     self._pick_random(ct)
                     return
-            elif fdist == 1:
+            elif fdist == 1 and (building_id is None or ct.get_team(building_id) == ct.get_team()):
                 corner = None
                 for d in CARDINAL_DIRECTIONS:
                     check_pos = self.current_target_pos.add(d)
@@ -53,7 +54,10 @@ class Waller(Bot):
                     building_id = ct.get_tile_building_id(check_pos)
                     if building_id and ct.get_entity_type(building_id) in CONVEYORS:
                         for diag in get_adjacent_diagonal(d):
-                            diag_b_id = ct.get_tile_building_id(self.current_target_pos.add(diag))
+                            diag_pos = self.current_target_pos.add(diag)
+                            if not is_in_bound(diag_pos, ct):
+                                continue
+                            diag_b_id = ct.get_tile_building_id(diag_pos)
                             if diag_b_id is None or ct.get_entity_type(diag_b_id) not in CONVEYORS:
                                 corner = check_pos
                                 break
@@ -98,7 +102,7 @@ class Waller(Bot):
                     bot_id = ct.get_tile_builder_bot_id(check_pos)
                     if bot_id is None and (check_id is None or ct.get_entity_type(check_id) == EntityType.ROAD):
                         self.current_target_pos = check_pos
-                        self.target_distance_squared = 1
+                        self.target_distance_squared = 0
                         self.current_state = BOT_STATE.GOING_TO_TARGET
                         self.distance_map = None
                         self.wall_building = True

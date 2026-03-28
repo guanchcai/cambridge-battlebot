@@ -78,7 +78,7 @@ class Bot(ABC):
 
     @abstractmethod
     def _set_internal_map(self, position: Position):
-        print("Start recording time!")
+        print("Start recording time")
         self.distance_map = self.walkable_calculator.run(
             self.current_target_pos,
             position,
@@ -101,11 +101,13 @@ class Bot(ABC):
             return
         
         start_time = ct.get_cpu_time_elapsed()
+        print(f"Start time: {start_time}")
         if self.previous_target_pos != self.current_target_pos or self.distance_map is None:
             self.previous_target_pos = self.current_target_pos
             self._set_internal_map(position)
         
         print(f"Time taken: {ct.get_cpu_time_elapsed() - start_time}")
+        print(self.distance_map)
 
         if not self.distance_map:
             self._set_wandering()
@@ -155,6 +157,10 @@ class Bot(ABC):
                     env = Environment.WALL
                     envp = env
                     self._read_markers(ct.get_marker_value(building_id), tile)
+
+                if etype == EntityType.CORE and not same_team:
+                    env = Environment.WALL
+                    envp = env
 
                 if not same_team:
                     env = Environment.WALL

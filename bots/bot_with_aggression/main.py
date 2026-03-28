@@ -17,6 +17,8 @@ SYMBOLS = {
     Environment.WALL:  "██",
 }
 
+TRANSGENDER_PROBABILITY = 0.15
+
 
 class Player:
     def __init__(self):
@@ -35,6 +37,8 @@ class Player:
         harvester_cost = ct.get_harvester_cost()[0]
         global_resources = ct.get_global_resources()[0]
         etype = ct.get_entity_type()
+        if current_round >= 800:
+            return
         match etype:
             case EntityType.CORE:
                 print(self.spawn_queue)
@@ -77,6 +81,8 @@ class Player:
                         continue
                     building_id = ct.get_tile_building_id(tile)
                     bot_id = ct.get_tile_builder_bot_id(tile)
+                    if connected_to(tile, building_id, EntityType.SENTINEL, False, ct):
+                        continue
                     entity_id = bot_id or building_id
                     if entity_id:
                         print(ct.get_entity_type(entity_id))
@@ -98,6 +104,30 @@ class Player:
                     if ct.can_fire(tile):
                         ct.fire(tile)
                         return
+            case EntityType.LAUNCHER:
+                launch_target = None
+                to_launch = None
+
+                for b_id in ct.get_nearby_units(2):
+                    if ct.get_entity_type(b_id) == EntityType.BUILDER_BOT:
+                        if ct.get_team(b_id) != ct.get_team():
+                            to_launch = b_id
+                            break
+                
+                if to_launch is not None:
+                    for b_id in ct.get_nearby_buildings():
+                        if ct.get_entity_type(b_id) not in PASSABLE:
+                            continue
+                        same_team = ct.get_team(b_id) == ct.get_team()
+                        if ct.get_entity_type(b_id) in CONVEYORS and same_team:
+                            continue
+                        build_pos = ct.get_position(b_id)
+                        if ct.can_launch(ct.get_position(to_launch), build_pos):
+                            if launch_target is None or build_pos.distance_squared(position) > launch_target.distance_squared(position):
+                                launch_target = build_pos
+                
+                if to_launch and launch_target:
+                    ct.launch(ct.get_position(to_launch), launch_target)
             case EntityType.BUILDER_BOT:
                 if not self.bot_type:
                     self.bot_type = self.decide_bot_type(position, ct)
@@ -119,11 +149,11 @@ class Player:
     def decide_bot_type(self, position: Position, ct: Controller):
         core_pos = ct.get_position(ct.get_tile_building_id(position))
         if get_skibidi_distance(core_pos, position) == 1:
-            if core_pos.direction_to(position) == Direction.NORTH and ct.get_current_round() >= 20:
+            if position.y < core_pos.y and ct.get_current_round() >= 20:
                 return Waller(ct)
             return Initator(ct)
         elif get_skibidi_distance(core_pos, position) == 2:
-            if ct.get_current_round() >= 50 and random.random() >= 0.8:
+            if ct.get_current_round() >= 50 and random.random() <= TRANSGENDER_PROBABILITY:
                 return Initator(ct)
             return Aggressor(ct)
         else:

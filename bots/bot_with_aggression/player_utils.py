@@ -1,6 +1,6 @@
 import random
 import math
-from cambc import Controller, Direction, EntityType, Environment, Position, ResourceType
+from cambc import Controller, Direction, EntityType, Environment, Position, ResourceType, Team
 
 # non-centre directions
 DIRECTIONS = [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.NORTHEAST, Direction.NORTHWEST, Direction.SOUTHEAST, Direction.SOUTHWEST]
@@ -127,23 +127,13 @@ def pointed_towards_bot(pos: Position, building_id, ct: Controller):
     if building_id is None:
         return False
     try:
-        match ct.get_entity_type(building_id):
-            case EntityType.CONVEYOR:
-                d = ct.get_direction(building_id)
-                bot_id = ct.get_tile_builder_bot_id(pos.add(d))
-                if bot_id and ct.get_team(bot_id) == ct.get_team() and bot_id != ct.get_id():
-                    return True
-            case EntityType.BRIDGE:
-                p = ct.get_bridge_target(building_id)
-                bot_id = ct.get_tile_builder_bot_id(p)
-                if bot_id and ct.get_team(bot_id) == ct.get_team() and bot_id != ct.get_id():
-                    return True
-            case _:
-                return False
+        targetted_pos = get_targetted_pos(pos, ct)
+        if targetted_pos is None:
+            return False
+        b_id = ct.get_tile_builder_bot_id(targetted_pos)
+        return b_id is not None
     except Exception:
         return False
-    
-    return False
 
 def get_adjacent_diagonal(d: Direction):
     match d:
@@ -157,3 +147,26 @@ def get_adjacent_diagonal(d: Direction):
             return (Direction.SOUTHWEST, Direction.NORTHWEST)
     
     raise ValueError
+
+def get_targetted_pos(pos: Position, ct: Controller) -> Position | None:
+    building_id = ct.get_tile_building_id(pos)
+    if building_id is None:
+        return None
+    
+    match ct.get_entity_type(building_id):
+        case EntityType.CONVEYOR | EntityType.SPLITTER:
+            d = ct.get_direction(building_id)
+            position = pos.add(d)
+            if ct.is_in_vision(position) and is_in_bound(position, ct):
+                return position
+        case EntityType.BRIDGE:
+            position = ct.get_bridge_target(building_id)
+            if ct.is_in_vision(position) and is_in_bound(position, ct):
+                return position
+    return None
+
+def other_team(ct: Controller):
+    if ct.get_team() == Team.A:
+        return Team.B
+    else: 
+        return Team.A

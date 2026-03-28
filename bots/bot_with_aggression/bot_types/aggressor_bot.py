@@ -1,5 +1,6 @@
 from bot_types.bot import Bot, BOT_STATE
 from path_finder_two import flood_fill
+from cambc import Team
 from player_utils import *
 
 class Aggressor(Bot):
@@ -17,7 +18,19 @@ class Aggressor(Bot):
     def _set_internal_map(self, position):
         return super()._set_internal_map(position)
     
-    def _move_to_pos(self, ct, allowed_movements=...):
+    def _move_to_pos(self, ct: Controller):
+        # Check if target is still valid
+        if self.current_state == BOT_STATE.GOING_TO_TARGET:
+            if is_in_bound(self.current_target_pos, ct) and ct.is_in_vision(self.current_target_pos):
+                check_id = ct.get_tile_building_id(self.current_target_pos)
+                b_id = ct.get_tile_builder_bot_id(self.current_target_pos)
+                print(f"Launcher nearby: {check_for_entity(self.current_target_pos, DIRECTIONS, EntityType.LAUNCHER, ct, other_team(ct)) is not None}")
+                print(self.distance_map)
+                if ((check_id is not None or b_id is not None) and ct.get_entity_type(check_id) not in PASSABLE) or \
+                    ct.get_tile_env(self.current_target_pos) == Environment.WALL or \
+                    check_for_entity(self.current_target_pos, DIRECTIONS, EntityType.LAUNCHER, ct, other_team(ct)) is not None:
+                    self._set_wandering()
+
         if self.current_state == BOT_STATE.GOING_TO_TARGET:
             dist = get_skibidi_distance(self.current_target_pos, ct.get_position())
             building_id = ct.get_tile_building_id(self.current_target_pos) if ct.is_in_vision(self.current_target_pos) else None
@@ -79,6 +92,8 @@ class Aggressor(Bot):
             self.distance_map = None
     
     def _update_tile(self, tile, building_id, ct):
+
+        # Building sentinels next to harvesters
         if building_id and ct.get_entity_type(building_id) == EntityType.HARVESTER and tile.distance_squared(self.enemy_pos) <= 13 ** 2:
             if self.current_state == BOT_STATE.WANDERING:
                 for d in CARDINAL_DIRECTIONS:
@@ -87,26 +102,31 @@ class Aggressor(Bot):
                         continue
                     check_id = ct.get_tile_building_id(check_pos)
                     if (
-                        check_id is None
-                    ) or (
-                        ct.get_entity_type(check_id) in PASSABLE and 
-                        not connected_to(tile, building_id, EntityType.SENTINEL, False, ct)
-                    ):
+                        check_id is None or 
+                        (
+                            ct.get_entity_type(check_id) in PASSABLE and 
+                            not connected_to(tile, building_id, EntityType.SENTINEL, False, ct) 
+                        )
+                    ) and check_for_entity(check_pos, DIRECTIONS, EntityType.LAUNCHER, ct, other_team(ct)) is None:
                         if check_pos.distance_squared(self.enemy_pos) < 169:
                             self.current_target_pos = check_pos
                             self.target_distance_squared = 0
                             self.current_state = BOT_STATE.GOING_TO_TARGET
                             self.distance_map = None
-        elif building_id and ct.get_entity_type(building_id) in CONVEYORS and ct.get_stored_resource(building_id) in [ResourceType.REFINED_AXIONITE, ResourceType.TITANIUM] and tile.distance_squared(self.enemy_pos) <= 169:
-            if self.current_state == BOT_STATE.WANDERING and not connected_to(tile, building_id, EntityType.SENTINEL, False, ct) and \
-                not pointed_towards_bot(tile, building_id, ct):
-                self.aggression_targets.append(tile)
-        
-        if self.current_state == BOT_STATE.GOING_TO_TARGET:
-            if is_in_bound(self.current_target_pos, ct) and ct.is_in_vision(self.current_target_pos):
-                check_id = ct.get_tile_building_id(self.current_target_pos)
-                if (check_id is not None and ct.get_entity_type(check_id) not in PASSABLE) or ct.get_tile_env(self.current_target_pos) == Environment.WALL:
-                    self._set_wandering()
+        # Hijacking enemy conveyor chain
+        elif building_id and ct.get_entity_type(building_id) in CONVEYORS and ct.get_stored_resource(building_id) in [ResourceType.REFINED_AXIONITE, ResourceType.TITANIUM] and tile.distance_squared(self.enemy_pos) <= 13 ** 2:
+            targetted_pos = get_targetted_pos(tile, ct)
+            if (
+                self.current_state == BOT_STATE.WANDERING and 
+                not connected_to(tile, building_id, EntityType.SENTINEL, False, ct) and
+                not pointed_towards_bot(tile, building_id, ct) and 
+                (targetted_pos is None or check_for_entity(targetted_pos, DIRECTIONS, EntityType.LAUNCHER, ct, other_team(ct)) is None)
+            ):
+                targetted_id = ct.get_tile_building_id(targetted_pos) if targetted_pos else None
+                if targetted_id and ct.get_team(building_id) != ct.get_team() and ct.get_entity_type(targetted_id) != EntityType.CORE:
+                    self.aggression_targets.append(targetted_pos)
+                else:
+                    self.aggression_targets.append(tile)
                         
     def _read_markers(self, val, marker_pos):
         return super()._read_markers(val, marker_pos)
