@@ -143,7 +143,8 @@ class Aggressor(Bot):
                 tile != self.previous_target_pos and
                 not has_launcher and
                 not connected_to(tile, building_id, EntityType.SENTINEL, False, ct) and
-                not pointed_towards_bot(tile, building_id, ct)
+                not pointed_towards_bot(tile, building_id, ct) and
+                self.enemy_pos.distance_squared(tile) <= 13 ** 2
             ):
                 targetted_id = ct.get_tile_building_id(targetted_pos) if targetted_pos else None
                 if targetted_id and ct.get_team(building_id) != ct.get_team() and ct.get_entity_type(targetted_id) != EntityType.CORE:

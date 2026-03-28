@@ -222,7 +222,6 @@ class Initator(Bot):
             if tile == self.current_target_pos:
                 bot_id = ct.get_tile_builder_bot_id(tile)
                 if bot_id and bot_id != ct.get_id():
-                    self.visited_ores.add(tile)
                     self._set_wandering()
                 elif building_id and ct.get_entity_type(building_id) == EntityType.HARVESTER:
                     self.visited_ores.add(tile)
