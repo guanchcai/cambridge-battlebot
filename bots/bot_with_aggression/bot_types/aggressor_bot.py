@@ -77,7 +77,8 @@ class Aggressor(Bot):
                             ct.get_entity_type(building_id) == EntityType.ROAD or
                             ct.get_entity_type(building_id) in CONVEYORS
                         ) and 
-                        ct.get_team(building_id) == ct.get_team()
+                        ct.get_team(building_id) == ct.get_team() and
+                        ct.can_destroy(self.current_target_pos)
                     ):
                         ct.destroy(self.current_target_pos)
                     building_id = ct.get_tile_building_id(self.current_target_pos)
@@ -88,6 +89,10 @@ class Aggressor(Bot):
                         self._set_wandering()
                         return
         super()._move_to_pos(ct)
+
+        b_id = ct.get_tile_building_id(ct.get_position())
+        if b_id and ct.get_entity_type(b_id) in CONVEYORS and ct.get_team(b_id) != ct.get_team() and ct.can_fire(ct.get_position()):
+            ct.fire(ct.get_position())
 
         if position and position != ct.get_position():
             if self.is_choke_point(position, ct):

@@ -25,7 +25,7 @@ class Player:
         # Core variables
         self.num_spawned = 0
         self.bomber_spawned = 0
-        self.spawn_queue = [Direction.SOUTH, Direction.NORTHEAST, Direction.SOUTHWEST]
+        self.spawn_queue = [Direction.SOUTH, Direction.NORTH, Direction.NORTHEAST]
 
         self.bot_type: Bot | None = None
         random.seed(time.time())
@@ -42,8 +42,8 @@ class Player:
             case EntityType.CORE:
                 print(self.spawn_queue)
                 if current_round == 100:
-                    self.spawn_queue.append(Direction.NORTH)
-                if current_round == 20:
+                    self.spawn_queue.append(Direction.NORTHEAST)
+                if current_round == 10:
                     self.spawn_queue.append(Direction.NORTH)
                 bot_id = ct.get_tile_builder_bot_id(position)
                 if bot_id is None:
@@ -107,9 +107,9 @@ class Player:
                 launch_target = None
                 to_launch = None
 
-                for b_id in ct.get_nearby_units(2):
+                for b_id in ct.get_nearby_units(3):
                     if ct.get_entity_type(b_id) == EntityType.BUILDER_BOT:
-                        if ct.get_team(b_id) != ct.get_team():
+                        if ct.get_team(b_id) != ct.get_team() and ct.get_position(b_id).distance_squared(position) <= 2:
                             to_launch = b_id
                             break
                 
@@ -124,7 +124,7 @@ class Player:
                         if ct.can_launch(ct.get_position(to_launch), build_pos):
                             if launch_target is None or build_pos.distance_squared(position) > launch_target.distance_squared(position):
                                 launch_target = build_pos
-                
+                print(to_launch, launch_target)
                 if to_launch and launch_target:
                     ct.launch(ct.get_position(to_launch), launch_target)
             case EntityType.BUILDER_BOT:
@@ -148,11 +148,11 @@ class Player:
     def decide_bot_type(self, position: Position, ct: Controller):
         core_pos = ct.get_position(ct.get_tile_building_id(position))
         if get_skibidi_distance(core_pos, position) == 1:
-            if position.y < core_pos.y and ct.get_current_round() >= 20:
+            if position.y < core_pos.y:
                 return Waller(ct)
             return Initator(ct)
         elif get_skibidi_distance(core_pos, position) == 2:
-            if ct.get_current_round() >= 50 and random.random() <= TRANSGENDER_PROBABILITY:
+            if ct.get_current_round() > 100 and random.random() <= TRANSGENDER_PROBABILITY:
                 return Initator(ct)
             return Aggressor(ct)
         else:

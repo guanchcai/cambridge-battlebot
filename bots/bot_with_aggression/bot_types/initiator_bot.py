@@ -161,7 +161,7 @@ class Initator(Bot):
                     ct.get_team(building_id) == ct.get_team()
                 )
 
-                if already_harvesting or (can_afford and own_building):
+                if already_harvesting or (can_afford and (own_building or building_id is None)):
                     if can_afford and not already_harvesting:
                         if own_building:
                             ct.destroy(self.current_target_pos)
@@ -221,11 +221,13 @@ class Initator(Bot):
         if ct.get_tile_env(tile) == Environment.ORE_TITANIUM:
             if tile == self.current_target_pos:
                 bot_id = ct.get_tile_builder_bot_id(tile)
-                if bot_id and bot_id != ct.get_id():
-                    self._set_wandering()
-                elif building_id and ct.get_entity_type(building_id) == EntityType.HARVESTER:
+                if building_id and ct.get_entity_type(building_id) == EntityType.HARVESTER:
                     self.visited_ores.add(tile)
                     self._set_wandering()
+                elif building_id and ct.get_entity_type(building_id) not in PASSABLE and ct.get_team(building_id) == ct.get_team():
+                    self.target_distance_squared = 1
+                    self.distance_map = None
+                
             if tile not in self.ore_sites:
                 self.ore_sites.add(tile)
                 if self.current_state == BOT_STATE.WANDERING:
