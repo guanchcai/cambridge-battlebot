@@ -21,6 +21,7 @@ class Bot(EBase):
         self.target_distance_squared = 0
         self.distance_map = None
         self.current_state = BotState.WANDERING
+        self.previous_position = None
         self.path_finder = AStarPathfinder(self.internal_map, ct.get_map_width())
         
         self.x_axis_symmetry = True
@@ -50,7 +51,16 @@ class Bot(EBase):
         self.move_to_pos()
             
         if self.distance_map:
-            print(*self.distance_map)
+            print(*self.distance_map)  
+
+        position = ct.get_position()
+
+        # for d in DIRECTIONS:
+        #     pos = position.add(d)
+        #     if ct.can_place_marker(pos):
+        #         ct.place_marker(pos, encode_coordinate(self.base_position))
+        #         break
+
 
     def update_map(self):
         for tile in self.ct.get_nearby_tiles():
@@ -61,13 +71,13 @@ class Bot(EBase):
             env = self.ct.get_tile_env(tile)
             self.set_from_pos(self.environment_map, tile, env)
 
+            self.check_symmetry(tile, env)
+            self.add_symmetry_tile(tile, env)
+
             if building_entity is not None and building_entity not in PASSABLE:
                 env = Environment.WALL
             
             if building_entity == EntityType.CORE and not same_team:
-                env = Environment.WALL
-            
-            if building_entity == EntityType.MARKER and same_team:
                 env = Environment.WALL
 
             self.set_from_pos(self.internal_map, tile, env)
@@ -75,8 +85,6 @@ class Bot(EBase):
             if env != Environment.EMPTY and self.distance_map and tile in self.distance_map and tile != self.current_target_position:
                 print("Encountered wall in path")
                 self.distance_map = None
-
-            self.check_symmetry(tile, env)
 
             self.update_tile(tile, building_id, self.ct.get_tile_builder_bot_id(tile))
             
@@ -92,7 +100,6 @@ class Bot(EBase):
         position = self.ct.get_position()
 
         dist_to_target = position.distance_squared(self.current_target_position)
-
         if dist_to_target <= self.target_distance_squared:
             self.reached_target()
         
@@ -120,6 +127,8 @@ class Bot(EBase):
         if self.ct.can_destroy(position) and is_road(position, self.ct):
             self.ct.destroy(position)
 
+        self.previous_position = position if position != self.ct.get_position() else self.previous_position
+
     def build_road(self, move_pos: Position, next_pos: Position):
         if self.ct.can_build_road(move_pos):
             self.ct.build_road(move_pos)
@@ -133,6 +142,7 @@ class Bot(EBase):
         return target_list[pos.y * self.ct.get_map_width() + pos.x]
 
     def run_flood_fill(self):
+        print(f"Going from {self.ct.get_position()} to {self.current_target_position}")
         self.distance_map = self.path_finder.run(
             self.ct.get_position(),
             self.current_target_position,
@@ -190,6 +200,33 @@ class Bot(EBase):
 
         if r_ref_tile and r_ref_tile != env:
             self.rotational_symmetry = False
+        
+    def add_symmetry_tile(self, tile: Position, env: Environment):
+        if sum([self.x_axis_symmetry, self.y_axis_symmetry, self.rotational_symmetry]) != 1:
+            return
+        
+        w = self.ct.get_map_width() - 1
+        h = self.ct.get_map_height() - 1
+        
+        if self.y_axis_symmetry:
+            ref_tile = Position(w - tile.x, tile.y)
+            
+        if self.x_axis_symmetry:
+            ref_tile = Position(tile.x, h - tile.y)
+            
+        if self.rotational_symmetry:
+            ref_tile = Position(w - tile.x, h - tile.y)
+        
+        new_tile = False
+        if self.get_from_pos(self.internal_map, ref_tile) is None:
+            new_tile = True
+        self.set_from_pos(self.environment_map, ref_tile, env)
+        if self.get_from_pos(self.internal_map, ref_tile) is None:
+            self.set_from_pos(self.internal_map, ref_tile, env)
+        
+        if new_tile:
+            self.update_tile(ref_tile, None, None)
+
 
     def set_target(self, target_pos: Position, distance_squared: int, state: BotState):
         self.current_target_position = target_pos

@@ -3,6 +3,8 @@ from entity_behaviour.entity_base import *
 from entity_behaviour.core import Core
 from entity_behaviour.bot import Bot
 from entity_behaviour.gatherer_bot import Gatherer
+from entity_behaviour.launcher import Launcher
+from entity_behaviour.blocker_bot import Blocker
 
 class Player:
     def __init__(self):
@@ -19,4 +21,6 @@ class Player:
             case EntityType.CORE:
                 return Core(ct)
             case EntityType.BUILDER_BOT:
-                return Gatherer(ct)
+                return Blocker(ct)
+            case EntityType.LAUNCHER:
+                return Launcher(ct)

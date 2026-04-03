@@ -74,8 +74,7 @@ def other_team(team: Team) -> Team:
         case Team.B:
             Team.A
 
-def check_for_entity(ct: Controller, directions: list[Direction], entity: EntityType, team: Team) -> Position:
-    position = ct.get_position()
+def check_for_entity(position: Position, ct: Controller, directions: list[Direction], entity: EntityType, team: Team) -> Position:
     for d in directions:
         check_pos = position.add(d)
         if not checkable_position(check_pos, ct):
@@ -101,3 +100,34 @@ def get_entity(pos: Position, ct: Controller) -> EntityType | None:
     
     b_id = ct.get_tile_building_id(pos)
     return ct.get_entity_type(b_id) if b_id else None
+
+def is_passable(pos: Position, ct: Controller) -> bool:
+    if not checkable_position(pos, ct):
+        return True
+    b_entity = get_entity(pos, ct)
+    env = ct.get_tile_env(pos)
+    return env != Environment.WALL and (b_entity in IGNORED_BUILDINGS or b_entity in PASSABLE)
+
+def destroyable(pos: Position, ct: Controller) -> bool:
+    if not checkable_position(pos, ct):
+        return False
+    b_id = ct.get_tile_building_id(pos)
+
+    return b_id and ct.get_entity_type(b_id) in DESTROYABLE_BUILDINGS and ct.get_team(b_id) == ct.get_team()
+
+def is_exposed(pos: Position, ct: Controller) -> bool:
+    if not pos:
+        return False
+    if get_entity(pos, ct) not in CONVEYORS:
+        return False
+    return check_for_entity(pos, ct, DIRECTIONS, EntityType.LAUNCHER, ct.get_team()) is None
+
+def encode_coordinate(pos: Position) -> int:
+    encoded = (pos.x << 6) | pos.y
+    return encoded
+
+
+def decode_coordinate(encoded: int) -> Position:
+    x = encoded >> 6
+    y = encoded & 0b111111
+    return Position(x, y)

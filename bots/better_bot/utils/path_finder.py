@@ -122,6 +122,9 @@ class AStarPathfinder:
 
                 if (nx, ny) in closed_set:
                     continue
+                
+                if not is_in_bound(nx, ny, self.w, self.h):
+                    continue
 
                 # Always allow stepping onto the target cell regardless of
                 # walkability — it may be a wall or ore the caller wants to

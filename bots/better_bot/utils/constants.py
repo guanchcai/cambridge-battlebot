@@ -4,12 +4,14 @@ from enum import Enum
 DIRECTIONS = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.NORTHEAST, Direction.NORTHWEST, Direction.SOUTHEAST, Direction.SOUTHWEST}
 CARDINAL_DIRECTIONS = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST}
 DIAGONAL_DIRECTIONS = {Direction.NORTHEAST, Direction.NORTHWEST, Direction.SOUTHEAST, Direction.SOUTHWEST}
-PASSABLE = {EntityType.BRIDGE, EntityType.CONVEYOR, EntityType.ROAD, EntityType.ARMOURED_CONVEYOR, EntityType.BUILDER_BOT, EntityType.CORE, EntityType.MARKER, EntityType.SPLITTER}
+PASSABLE = {None, EntityType.BRIDGE, EntityType.CONVEYOR, EntityType.ROAD, EntityType.ARMOURED_CONVEYOR, EntityType.BUILDER_BOT, EntityType.CORE, EntityType.MARKER, EntityType.SPLITTER}
 VALUABLE_ENEMY_ENTITIES = {EntityType.CONVEYOR, EntityType.ARMOURED_CONVEYOR, EntityType.SPLITTER, EntityType.BRIDGE, EntityType.FOUNDRY, EntityType.BUILDER_BOT, EntityType.CORE, EntityType.GUNNER, EntityType.SENTINEL}
 ORE_SITES = {Environment.ORE_TITANIUM, Environment.ORE_AXIONITE}
 CONVEYORS = {EntityType.BRIDGE, EntityType.CONVEYOR, EntityType.ARMOURED_CONVEYOR, EntityType.SPLITTER}
 INVALID_CONTAINERS = {EntityType.MARKER, EntityType.ROAD}
+DESTROYABLE_BUILDINGS = {EntityType.ROAD, EntityType.BARRIER}
 STUCK_THRESHHOLD = 3
+IGNORED_BUILDINGS = {EntityType.MARKER, None}
 CARDINAL_DELTAS = [
     (0, 1, 1), 
     (0, -1, 1), 
