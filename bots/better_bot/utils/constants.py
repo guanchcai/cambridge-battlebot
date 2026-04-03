@@ -38,3 +38,5 @@ class DeltaTypes(Enum):
     DIAGONAL = 1
     ALL = 2
     BRIDGE = 3
+
+BASE_DIST = 35

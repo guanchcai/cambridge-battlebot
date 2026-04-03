@@ -85,6 +85,15 @@ def check_for_entity(position: Position, ct: Controller, directions: list[Direct
             if ct.get_team(check_id) == team:
                 return check_pos
             
+def get_positions_of_entities(position: Position, ct: Controller, radius: int, entity: EntityType, team: Team) -> Position:
+    result = []
+    for entity_id in ct.get_nearby_entities():
+        if ct.get_position(entity_id).distance_squared(position) > radius:
+            continue
+        if ct.get_team(entity_id) == team and ct.get_entity_type(entity_id) == entity:
+            result.append(ct.get_position(entity_id))
+    
+    return result
 
 def check_for_env(ct: Controller, directions: list[Direction], env: Environment) -> Position:
     position = ct.get_position()
@@ -131,3 +140,23 @@ def decode_coordinate(encoded: int) -> Position:
     x = encoded >> 6
     y = encoded & 0b111111
     return Position(x, y)
+
+def get_skibidi_distance(pos1: Position, pos2: Position):
+    return max(abs(pos1.x - pos2.x), abs(pos1.y - pos2.y))
+
+
+def decide_splitter_direction(pos: Position, base_pos: Position):
+    d = Direction.NORTH
+    x_dif = pos.x - base_pos.x
+    y_dif = pos.y - base_pos.y
+    if abs(x_dif) > abs(y_dif):
+        if x_dif < 0:
+            d = Direction.NORTH
+        else:
+            d = Direction.SOUTH
+    else:
+        if y_dif < 0:
+            d = Direction.EAST
+        else:
+            d = Direction.WEST
+    return d

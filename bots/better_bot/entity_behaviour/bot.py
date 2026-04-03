@@ -55,11 +55,11 @@ class Bot(EBase):
 
         position = ct.get_position()
 
-        # for d in DIRECTIONS:
-        #     pos = position.add(d)
-        #     if ct.can_place_marker(pos):
-        #         ct.place_marker(pos, encode_coordinate(self.base_position))
-        #         break
+        for d in DIRECTIONS:
+            pos = position.add(d)
+            if ct.can_place_marker(pos):
+                ct.place_marker(pos, encode_coordinate(self.base_position))
+                break
 
 
     def update_map(self):
@@ -83,7 +83,7 @@ class Bot(EBase):
             self.set_from_pos(self.internal_map, tile, env)
 
             if env != Environment.EMPTY and self.distance_map and tile in self.distance_map and tile != self.current_target_position:
-                print("Encountered wall in path")
+                print(f"Encountered wall in path on position: {tile}")
                 self.distance_map = None
 
             self.update_tile(tile, building_id, self.ct.get_tile_builder_bot_id(tile))
@@ -130,6 +130,11 @@ class Bot(EBase):
         self.previous_position = position if position != self.ct.get_position() else self.previous_position
 
     def build_road(self, move_pos: Position, next_pos: Position):
+        if check_for_entity(move_pos, self.ct, DIRECTIONS, EntityType.CORE, self.ct.get_team()):
+            d = decide_splitter_direction(move_pos, self.base_position)
+            if self.ct.can_build_splitter(move_pos, d):
+                self.ct.build_splitter(move_pos, d)
+
         if self.ct.can_build_road(move_pos):
             self.ct.build_road(move_pos)
         

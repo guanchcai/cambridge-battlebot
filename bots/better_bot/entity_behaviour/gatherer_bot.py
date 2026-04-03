@@ -9,6 +9,9 @@ class Gatherer(Bot):
 
         # I hate this but this variable is for one specific bug and one specific scenario
         self.build_harvester = False
+        # I hate this pt 2
+        self.just_bridged = False
+
         self.dont_build_wall = None
 
         self.previous_bot_thrower = None
@@ -54,6 +57,7 @@ class Gatherer(Bot):
         position = self.ct.get_position()
 
         def build_conveyor_chain(from_pos: Position, to_pos: Position, connect_next=True):
+            print(f"Building conveyor chain from {from_pos} to {to_pos}")
             if position.distance_squared(from_pos) > 1:
                 self.set_target(from_pos, 0, BotState.GOING_TO_TARGET)
                 return
@@ -73,6 +77,10 @@ class Gatherer(Bot):
             if from_pos.distance_squared(to_pos) > 1:
                 if self.ct.can_build_bridge(from_pos, to_pos):
                     self.ct.build_bridge(from_pos, to_pos)
+
+                    if get_entity(to_pos, self.ct) == EntityType.SPLITTER:
+                        self.just_bridged = True
+                    
                     if not is_exposed(from_pos, self.ct) and not is_exposed(self.previous_position, self.ct) and connect_next:
                         self.set_target(to_pos, 0, BotState.GOING_TO_TARGET)
             elif from_pos.distance_squared(to_pos) == 1 and self.ct.can_build_conveyor(from_pos, from_pos.direction_to(to_pos)):
@@ -116,12 +124,19 @@ class Gatherer(Bot):
 
         # This runs 4 extra checks each tick idk if its good or not
         if build_harvester():
-            self.set_target(self.base_position, 1, BotState.GOING_BACK)
+            print("Need harvesters")
+            self.set_target(self.base_position, BASE_DIST, BotState.GOING_BACK)
             return False
         
         if build_bot_thrower():
             print("Need launchers")
             return False
+        
+        if self.just_bridged:
+            print("I just bridged!")
+            self.just_bridged = False
+            self.set_wandering()
+            return True
         
         current_tile_id = self.ct.get_tile_building_id(position)
         same_team = current_tile_id and self.ct.get_team(current_tile_id) == self.ct.get_team()
@@ -136,14 +151,21 @@ class Gatherer(Bot):
         if current_tile_entity in IGNORED_BUILDINGS and self.ct.get_tile_env(position) != Environment.ORE_TITANIUM:
             build_conveyor_chain(position, move_pos)
             return False
-        elif not same_team:
+        elif current_tile_id and not same_team:
             return False
 
-        if next_pos:
+        bridge_target_pos_choices = get_positions_of_entities(move_pos, self.ct, 9, EntityType.SPLITTER, self.ct.get_team())
+        if position.distance_squared(self.base_position) <= BASE_DIST and self.ct.get_tile_env(position) != Environment.ORE_TITANIUM:
+            if bridge_target_pos_choices:
+                bridge_target_pos = random.choice(bridge_target_pos_choices) if bridge_target_pos_choices else None
+                build_conveyor_chain(move_pos, bridge_target_pos, False)
+        elif next_pos:
             build_conveyor_chain(move_pos, next_pos)
         else:
-            build_conveyor_chain(move_pos, self.base_position, False)
-            self.set_wandering()
+            if position.distance_squared(move_pos) > 1:
+                self.set_target(move_pos, 0, BotState.GOING_TO_TARGET)
+                return
+            
         return True
     
     def run_flood_fill(self):
@@ -154,7 +176,7 @@ class Gatherer(Bot):
                     self.current_target_position,
                     False, 
                     DeltaTypes.BRIDGE, 
-                    self.target_distance_squared, 
+                    0, 
                     True
                 )
             case BotState.WANDERING:
@@ -192,7 +214,6 @@ class Gatherer(Bot):
 
         reached_ore = self.current_state == BotState.GOING_TO_TARGET and env == Environment.ORE_TITANIUM
         can_build = self.ct.get_global_resources()[0] >= self.ct.get_harvester_cost()[0]
-        can_build_bridge = self.ct.get_action_cooldown() == 0 and self.ct.get_global_resources()[0] >= self.ct.get_bridge_cost()[0]
 
         if reached_ore and self.dont_build_wall is None:
             path_back = self.path_finder.run(
@@ -200,7 +221,7 @@ class Gatherer(Bot):
                     self.base_position,
                     False, 
                     DeltaTypes.BRIDGE, 
-                    9, 
+                    0, 
                     True
                 )
             if len(path_back) > 1:
@@ -218,20 +239,36 @@ class Gatherer(Bot):
                     return
 
         if reached_ore and can_build:
-            self.set_target(self.base_position, 1, BotState.GOING_BACK)
+            self.set_target(self.base_position, BASE_DIST, BotState.GOING_BACK)
             self.build_harvester = True
         elif self.current_state == BotState.GOING_TO_TARGET and env == Environment.EMPTY:
-            if position.distance_squared(self.base_position) <= 9:
+            if position.distance_squared(self.base_position) <= BASE_DIST:
+                if is_exposed(position, self.ct) and get_entity(position, self.ct) == EntityType.BRIDGE: # Duplicate code fix later
+                    for d in CARDINAL_DIRECTIONS:
+                        check_pos = position.add(d)
+                        if not checkable_position(check_pos, self.ct) or \
+                            self.ct.get_tile_env(check_pos) != Environment.EMPTY or \
+                            get_entity(check_pos, self.ct) not in IGNORED_BUILDINGS:
+                            continue
+                        elif self.ct.can_destroy(check_pos) and get_entity(check_pos, self.ct) == EntityType.ROAD:
+                            self.ct.destroy(check_pos)
+                        if self.ct.can_build_launcher(check_pos):
+                            self.ct.build_launcher(check_pos)
+                            break
+
                 if same_team and self.ct.can_destroy(position) and self.ct.get_entity_type(building_id) == EntityType.ROAD:
                     self.ct.destroy(position)
+
                 building_entity = get_entity(position, self.ct)
                 if building_entity in IGNORED_BUILDINGS:
-                    if can_build_bridge:
-                        self.ct.build_bridge(position, self.base_position)
+                    bridge_target_pos_choices = get_positions_of_entities(position, self.ct, 9, EntityType.SPLITTER, self.ct.get_team())
+                    bridge_target_pos = random.choice(bridge_target_pos_choices) if bridge_target_pos_choices else None
+                    if bridge_target_pos and self.ct.can_build_bridge(position, bridge_target_pos):
+                        self.ct.build_bridge(position, bridge_target_pos)
                 else:
                     self.set_wandering()
             else:
-                self.set_target(self.base_position, 1, BotState.GOING_BACK)
+                self.set_target(self.base_position, BASE_DIST, BotState.GOING_BACK)
         
         self.dont_build_wall = None
     
