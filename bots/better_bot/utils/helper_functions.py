@@ -174,39 +174,52 @@ def get_conveyor_target(pos: Position, ct: Controller):
         case _:
             return None
     
-    if checkable_position(position):
-        return position
+    return position
     
 def limit_to_map(pos: Position, ct: Controller):
     def clamp_between(a, b, x):
         return max(min(b, x), a)
     return Position(clamp_between(0, ct.get_map_width() - 1, pos.x), clamp_between(0, ct.get_map_height() - 1), pos.y)
 
-def connected_to(pos: Position, target_building: EntityType, team: Team, ct: Controller, seen: list[int]=[]):
-    if not checkable_position(pos): return True # Could be connected
+def get_connections(pos: Position, team: Team, ct: Controller, seen: list[int]=[]) -> set[EntityType]:
+    if not checkable_position(pos): return set(EntityType.MARKER) # Could be connected
 
     building_id = ct.get_tile_building_id(pos)
-    if building_id is None or building_id in seen: return False # A loop has formed
+    if building_id in seen: return set() # A loop has formed
+    if building_id is None: return set(None)
 
     etype = ct.get_entity_type(building_id)
     seen.append(building_id)
 
-    if etype == target_building and ct.get_team(building_id) ==  team:
-        return True
+    if etype in IGNORED_BUILDINGS:
+        return set()
 
     match etype:
         case EntityType.CONVEYOR | EntityType.ARMOURED_CONVEYOR | EntityType.BRIDGE:
             check_pos = get_conveyor_target(pos, ct)
-            if check_pos:
-                return connected_to(check_pos, target_building, team, ct, seen)
-            else:
-                return True
+            return get_connections(check_pos, team, ct, seen)
 
         case EntityType.SPLITTER:
             face_direction = ct.get_direction(building_id)
             check_positions = [pos.add(d) for d in CARDINAL_DIRECTIONS if d != face_direction.opposite()]
+            ret = set()
             for p in check_positions:
-                if connected_to(p, target_building, team, ct, seen):
-                    return True # Could use list comprehension but I am not sure how it interacts with memo seen
+                ret = ret.union(get_connections(p, team, ct, seen))
+            
+            return ret
     
+    if team != ct.get_team(building_id):
+        return set()
+
+    return set(etype)
+
+def is_connected_to(pos: Position, target_type: EntityType, team: Team, ct: Controller) -> bool:
+    connections = get_connections(pos, team, ct)
+    if target_type in connections or EntityType.MARKER in connections:
+        return True
     return False
+
+def is_connected_to_turret(pos: Position, team: Team, ct: Controller) -> bool:
+    connections = get_connections(pos, team, ct)
+    turrets = set([EntityType.SENTINEL, EntityType.GUNNER, EntityType.MARKER, EntityType.BREACH])
+    return not turrets.isdisjoint(connections)
