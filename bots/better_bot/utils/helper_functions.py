@@ -160,3 +160,53 @@ def decide_splitter_direction(pos: Position, base_pos: Position):
         else:
             d = Direction.WEST
     return d
+
+def get_conveyor_target(pos: Position, ct: Controller):
+    building_id = ct.get_id(pos)
+    building_entity = get_entity(pos, ct)
+    position = None
+    match building_entity:
+        case EntityType.CONVEYOR | EntityType.SPLITTER:
+            d = ct.get_direction(building_id)
+            position = pos.add(d)
+        case EntityType.BRIDGE:
+            position = ct.get_bridge_target(building_id)
+        case _:
+            return None
+    
+    if checkable_position(position):
+        return position
+    
+def limit_to_map(pos: Position, ct: Controller):
+    def clamp_between(a, b, x):
+        return max(min(b, x), a)
+    return Position(clamp_between(0, ct.get_map_width() - 1, pos.x), clamp_between(0, ct.get_map_height() - 1), pos.y)
+
+def connected_to(pos: Position, target_building: EntityType, team: Team, ct: Controller, seen: list[int]=[]):
+    if not checkable_position(pos): return True # Could be connected
+
+    building_id = ct.get_tile_building_id(pos)
+    if building_id is None or building_id in seen: return False # A loop has formed
+
+    etype = ct.get_entity_type(building_id)
+    seen.append(building_id)
+
+    if etype == target_building and ct.get_team(building_id) ==  team:
+        return True
+
+    match etype:
+        case EntityType.CONVEYOR | EntityType.ARMOURED_CONVEYOR | EntityType.BRIDGE:
+            check_pos = get_conveyor_target(pos, ct)
+            if check_pos:
+                return connected_to(check_pos, target_building, team, ct, seen)
+            else:
+                return True
+
+        case EntityType.SPLITTER:
+            face_direction = ct.get_direction(building_id)
+            check_positions = [pos.add(d) for d in CARDINAL_DIRECTIONS if d != face_direction.opposite()]
+            for p in check_positions:
+                if connected_to(p, target_building, team, ct, seen):
+                    return True # Could use list comprehension but I am not sure how it interacts with memo seen
+    
+    return False
