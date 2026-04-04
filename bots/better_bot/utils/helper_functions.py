@@ -221,5 +221,13 @@ def is_connected_to(pos: Position, target_type: EntityType, team: Team, ct: Cont
 
 def is_connected_to_turret(pos: Position, team: Team, ct: Controller) -> bool:
     connections = get_connections(pos, team, ct)
-    turrets = set([EntityType.SENTINEL, EntityType.GUNNER, EntityType.MARKER, EntityType.BREACH])
-    return not turrets.isdisjoint(connections)
+    return not TURRETS.isdisjoint(connections)
+
+def is_directly_connected_to_turret(pos:Position, team: Team, ct: Controller) -> bool:
+    turret_id = ct.get_tile_building_id(get_conveyor_target(pos, ct))
+    if turret_id:
+        turret_type = ct.get_entity_type(turret_id)
+        if turret_type in TURRETS:
+            return True
+
+    return False 
