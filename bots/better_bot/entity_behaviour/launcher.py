@@ -1,7 +1,7 @@
-from entity_behaviour.entity_base import *
+from bots.better_bot.entity_behaviour.entity_base import *
 from cambc import EntityType, ResourceType
-from utils.helper_functions import *
-from utils.constants import *
+from bots.better_bot.utils.helper_functions import *
+from bots.better_bot.utils.constants import *
 
 class Launcher(EBase):
     def __init__(self, ct: Controller):
@@ -66,7 +66,9 @@ class Launcher(EBase):
             
             self.enemy_targets.sort(lambda v, p, _: v * 1000 + self.ct.get_position().distance_squared(p) ,reverse=True)
             for _, target, _ in self.enemy_targets:
-                if self.ct.can_launch()
+                if self.ct.can_launch():
+                    pass
+                    # wtf is this lol
             return False
 
         if not self.can_launch:

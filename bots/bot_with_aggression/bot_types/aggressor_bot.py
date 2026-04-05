@@ -1,6 +1,6 @@
 from bot_types.bot import Bot, BOT_STATE
 from path_finder_two import flood_fill
-from cambc import Team
+from cambc import Team, Controller
 from player_utils import *
 
 class Aggressor(Bot):

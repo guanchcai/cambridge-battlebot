@@ -1,6 +1,6 @@
-from entity_behaviour.bot import Bot
-from utils.constants import *
-from utils.helper_functions import *
+from bots.better_bot.entity_behaviour.bot import Bot
+from bots.better_bot.utils.constants import *
+from bots.better_bot.utils.helper_functions import *
 from cambc import Controller, Position, Direction, EntityType, Environment, ResourceType
 import random
 

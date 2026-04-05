@@ -1,7 +1,7 @@
 from cambc import Controller, Environment, Position, EntityType
-from entity_behaviour.bot import Bot
-from utils.constants import CONVEYORS, BotState, DeltaTypes
-from utils.helper_functions import *
+from bots.better_bot.entity_behaviour.bot import Bot
+from bots.better_bot.utils.constants import CONVEYORS, BotState, DeltaTypes
+from bots.better_bot.utils.helper_functions import *
 
 class BaseBuilder(Bot):
     def __init__(self, ct: Controller):        
