@@ -1,7 +1,7 @@
 from cambc import Controller, Environment, Position, EntityType
-from bots.better_bot.entity_behaviour.bot import Bot
-from bots.better_bot.utils.constants import CONVEYORS, BotState, DeltaTypes
-from bots.better_bot.utils.helper_functions import *
+from entity_behaviour.bot import Bot
+from utils.constants import CONVEYORS, BotState, DeltaTypes
+from utils.helper_functions import *
 
 class Gatherer(Bot):
     def __init__(self, ct: Controller):
@@ -79,8 +79,7 @@ class Gatherer(Bot):
                     if get_entity(to_pos, self.ct) in CONVEYORS:
                         self.just_bridged = True
                     
-                    if connect_next and \
-                       not build_harvester(from_pos):
+                    if connect_next:
                         self.set_target(to_pos, 0, BotState.GOING_TO_TARGET, TargetTypes.CONNECT_BRIDGE)
             elif from_pos.distance_squared(to_pos) == 1 and self.ct.can_build_conveyor(from_pos, from_pos.direction_to(to_pos)):
                 self.ct.build_conveyor(from_pos, from_pos.direction_to(to_pos))

@@ -1,9 +1,9 @@
 import heapq
 import math
 from cambc import Position, Environment
-from bots.better_bot.utils.helper_functions import is_in_bound, direction_to_delta
-from bots.better_bot.utils.constants import DeltaTypes
-from bots.better_bot.utils.path_queue import PathQueue
+from utils.helper_functions import is_in_bound, direction_to_delta
+from utils.constants import DeltaTypes
+from utils.path_queue import PathQueue
 
 class AStarPathfinder:
 

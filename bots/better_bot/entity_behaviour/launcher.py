@@ -1,7 +1,7 @@
-from bots.better_bot.entity_behaviour.entity_base import *
+from entity_behaviour.entity_base import *
 from cambc import EntityType, ResourceType
-from bots.better_bot.utils.helper_functions import *
-from bots.better_bot.utils.constants import *
+from utils.helper_functions import *
+from utils.constants import *
 
 class Launcher(EBase):
     def __init__(self, ct: Controller):
@@ -60,16 +60,10 @@ class Launcher(EBase):
                 return False
             enemy_pos = self.ct.get_position(random.choice(enemy_bots))
             self.enemy_targets.sort(key=lambda item: item[0] * 1000 + self.ct.get_position().distance_squared(item[1]), reverse=True)
-            for _, target, _ in self.enemy_targets:
-<<<<<<< HEAD
-                if self.ct.can_launch(enemy_pos, target):
-                    self.ct.launch(enemy_pos, target)
+            for target in self.enemy_targets:
+                if self.ct.can_launch(enemy_pos, target[1]):
+                    self.ct.launch(enemy_pos, target[1])
                     return True
-=======
-                if self.ct.can_launch():
-                    pass
-                    # wtf is this lol
->>>>>>> 0a5c819cdf44c77ae6407e9638d20ddca32505da
             return False
         
         def launch_allied_bots():
@@ -77,9 +71,9 @@ class Launcher(EBase):
                 return False
             ally_pos = self.ct.get_position(random.choice(allied_bots))
             self.aggression_targets.sort(reverse=True)
-            for _, target, _ in self.aggression_targets:
-                if self.ct.can_launch(ally_pos, target):
-                    self.ct.launch(ally_pos, target)
+            for target in self.aggression_targets:
+                if self.ct.can_launch(ally_pos, target[1]):
+                    self.ct.launch(ally_pos, target[1])
                     return
 
         if not self.can_launch:

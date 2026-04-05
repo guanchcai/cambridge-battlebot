@@ -1,4 +1,4 @@
-from bots.better_bot.entity_behaviour.entity_base import *
+from entity_behaviour.entity_base import *
 from cambc import Direction
 
 class Core(EBase):
