@@ -7,12 +7,10 @@ import random
 
 class Bot(EBase):
     def __init__(self, ct: Controller):
-        map_width = ct.get_map_width()
-        map_height = ct.get_map_height()
         super().__init__(ct)
         self.base_position = ct.get_position(ct.get_tile_building_id(self.original_position))
-        self.internal_map = [None] * (map_width * map_height)
-        self.environment_map = [None] * (map_width * map_height)
+        self.internal_map = [None] * (self.map_width * self.map_height)
+        self.environment_map = [None] * (self.map_width * self.map_height)
 
         self.ore_sites = set()
         self.visited_ore_sites = set()
@@ -22,7 +20,7 @@ class Bot(EBase):
         self.distance_map = None
         self.current_state = BotState.WANDERING
         self.previous_position = None
-        self.path_finder = AStarPathfinder(self.internal_map, ct.get_map_width())
+        self.path_finder = AStarPathfinder(self.internal_map, self.map_width)
         
         self.x_axis_symmetry = True
         self.y_axis_symmetry = True
@@ -35,8 +33,8 @@ class Bot(EBase):
         self.buckets = {}
         self.bucket_size = 16
         
-        for x in range(map_width):
-            for y in range(map_height):
+        for x in range(self.map_width):
+            for y in range(self.map_height):
                 p = Position(x, y)
                 self.unexplored.add(p)
                 bucket = (x // self.bucket_size, y // self.bucket_size)
@@ -51,9 +49,6 @@ class Bot(EBase):
             ct.draw_indicator_line(ct.get_position(), self.current_target_position, 255, 0, 0)
         
         self.move_to_pos()
-            
-        if self.distance_map:
-            print(*self.distance_map)  
 
         position = ct.get_position()
 
@@ -71,12 +66,13 @@ class Bot(EBase):
 
 
     def update_map(self):
-        for tile in self.ct.get_nearby_tiles():
+        self_id = self.ct.get_id()
+        for tile in self.ct.get_nearby_tiles(16):
             building_id = self.ct.get_tile_building_id(tile)
             building_entity = self.ct.get_entity_type(building_id) if building_id else None
             same_team = self.ct.get_team(building_id) == self.team if building_id else True
             bot_id = self.ct.get_tile_builder_bot_id(tile)
-            if bot_id == self.ct.get_id():
+            if bot_id == self_id:
                 bot_id = None
 
             env = self.ct.get_tile_env(tile)
@@ -105,7 +101,10 @@ class Bot(EBase):
             if tile in self.unexplored:
                 self.unexplored.remove(tile)
                 bucket = (tile.x // self.bucket_size, tile.y // self.bucket_size)
-                self.buckets[bucket].remove(tile)
+                bucket_list = self.buckets[bucket]
+                i = bucket_list.index(tile)
+                bucket_list[i] = bucket_list[-1]
+                bucket_list.pop()
                 if not self.buckets[bucket]:
                     del self.buckets[bucket] 
 
@@ -150,10 +149,10 @@ class Bot(EBase):
         return True
 
     def set_from_pos(self, target_list: list, pos: Position, value):
-        target_list[pos.y * self.ct.get_map_width() + pos.x] = value
+        target_list[pos.y * self.map_width + pos.x] = value
 
     def get_from_pos(self, target_list: list, pos: Position):
-        return target_list[pos.y * self.ct.get_map_width() + pos.x]
+        return target_list[pos.y * self.map_width + pos.x]
 
     def run_flood_fill(self):
         print(f"Going from {self.ct.get_position()} to {self.current_target_position}")
@@ -172,7 +171,7 @@ class Bot(EBase):
 
     def nearest_unexplored(self) -> Position | None:
         if not self.buckets:
-            return Position(random.randint(0, self.ct.get_map_width() - 1), random.randint(0, self.ct.get_map_height() - 1))
+            return Position(random.randint(0, self.map_width - 1), random.randint(0, self.map_height - 1))
         
         pos = self.ct.get_position()
 
@@ -193,11 +192,11 @@ class Bot(EBase):
         pass
 
     def check_symmetry(self, tile: Position, env: Environment):
-        if sum([self.x_axis_symmetry, self.y_axis_symmetry, self.rotational_symmetry]) <= 1:
+        if self.x_axis_symmetry + self.y_axis_symmetry + self.rotational_symmetry <= 1:
             return
     
-        w = self.ct.get_map_width() - 1
-        h = self.ct.get_map_height() - 1
+        w = self.map_width - 1
+        h = self.map_height - 1
         y_axis_reflection = Position(w - tile.x, tile.y)
         x_axis_reflection = Position(tile.x, h - tile.y)
         rotation_reflection = Position(w - tile.x, h - tile.y)
@@ -216,11 +215,11 @@ class Bot(EBase):
             self.rotational_symmetry = False
         
     def add_symmetry_tile(self, tile: Position, env: Environment):
-        if sum([self.x_axis_symmetry, self.y_axis_symmetry, self.rotational_symmetry]) != 1:
+        if self.x_axis_symmetry + self.y_axis_symmetry + self.rotational_symmetry != 1:
             return
         
-        w = self.ct.get_map_width() - 1
-        h = self.ct.get_map_height() - 1
+        w = self.map_width - 1
+        h = self.map_height - 1
         
         if self.y_axis_symmetry:
             ref_tile = Position(w - tile.x, tile.y)
@@ -235,7 +234,7 @@ class Bot(EBase):
             self.enemy_base_pos = Position(w - self.base_position.x, h - self.base_position.y)
         
         new_tile = False
-        if self.get_from_pos(self.internal_map, ref_tile) is None:
+        if self.get_from_pos(self.environment_map, ref_tile) is None:
             new_tile = True
         self.set_from_pos(self.environment_map, ref_tile, env)
         if self.get_from_pos(self.internal_map, ref_tile) is None:

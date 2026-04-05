@@ -27,6 +27,18 @@ class Aggressor(Bot):
         self.aggression_targets = []
         self.turrets_in_range = []
         super().update_map()
+        # Store all the bot launchers of enemies as a set
+        # Loop through the set and set all positions nearby as walls using set_from_position (or you can alternatively set it as update tile detects if it is a launcher)
+        # If path finder can't find a path (Returns None) yet there is a target (current_target_position is not None) then:
+        # Place a launcher (if possible) - if not then... uhh
+        # Set target to the launcher
+        # In launcher script, identify the target using the same logic (thus it should identify the same target as the bot, if not its fine as it is still "a" target)
+        # Launch set bot to the target
+        
+        # Add if you have time:
+        # If the launcher doesn't launch myself for more than 3 rounds in a row (meaning there is not targets nearby), destroy the launcher
+        # This is because we blindly path find to a bot launcher trusting that it has a target
+
         if self.current_state != BotState.GOING_TO_TARGET:
             if self.aggression_targets:
                 self.set_target(max(self.aggression_targets), 0, BotState.GOING_TO_TARGET)

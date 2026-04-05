@@ -32,16 +32,16 @@ class Gatherer(Bot):
             self.ore_sites.add(tile)
         elif self.get_from_pos(self.environment_map, tile) == Environment.ORE_AXIONITE:
             self.ignored_ore_sites.add(tile)
-        check_poses = [tile.add(d) for d in CARDINAL_DIRECTIONS] # Duplicate code
     
         if (
             self.current_state != BotState.GOING_BACK and
             self.current_target_position == tile and 
             (
                 not (is_passable(tile, self.ct) or destroyable(tile, self.ct)) or \
-                not any([can_pass(p) for p in check_poses])
+                not any([can_pass(tile.add(d)) for d in CARDINAL_DIRECTIONS])
             )
         ):
+            print("Yeah no fuh that")
             self.set_wandering()
 
     def build_road(self, move_pos: Position, next_pos: Position) -> bool:
@@ -134,7 +134,6 @@ class Gatherer(Bot):
         # This runs 4 extra checks each tick idk if its good or not
         if build_harvester():
             print("Need harvesters")
-            self.set_target(self.base_position, BASE_DIST, BotState.GOING_BACK, TargetTypes.BASE)
             return False
         
         if build_bot_thrower():
@@ -217,7 +216,7 @@ class Gatherer(Bot):
 
         reached_ore = self.current_state == BotState.GOING_TO_TARGET and env in ORE_SITES
         can_build = self.ct.get_global_resources()[0] >= self.ct.get_harvester_cost()[0]
-
+        print(self.ct.get_cpu_time_elapsed())
         if reached_ore and self.dont_build_wall is None:
             path_back = self.path_finder.run(
                     position,
@@ -229,7 +228,7 @@ class Gatherer(Bot):
                 )
             if len(path_back) > 1:
                 self.dont_build_wall = path_back[0].direction_to(path_back[1])
-
+        print(self.ct.get_cpu_time_elapsed())
         if reached_ore:
             for d in CARDINAL_DIRECTIONS:
                 check_pos = position.add(d)
@@ -285,10 +284,18 @@ class Gatherer(Bot):
             unvisited_ores = self.ore_sites - self.visited_ore_sites
         else:
             unvisited_ores = self.ore_sites.union(self.ignored_ore_sites) - self.visited_ore_sites
-        unvisited_ores = set(filter(lambda p: self.enemy_base_pos is None or self.base_position.distance_squared(p) <= 1.2 * self.enemy_base_pos.distance_squared(p), unvisited_ores))
+        
+        unvisited_ores = set(
+            filter(
+                lambda p: (self.enemy_base_pos is None) or self.base_position.distance_squared(p) <= 1.3 * self.enemy_base_pos.distance_squared(p), 
+                unvisited_ores
+            )
+        )
+        
         if unvisited_ores:
             to_visit = min(unvisited_ores, key=lambda ore: self.ct.get_position().distance_squared(ore))
             self.visited_ore_sites.add(to_visit)
+            print(f"I am going to visit {to_visit}")
             return to_visit
         return None
     

@@ -93,37 +93,36 @@ class AStarPathfinder:
         g_score = [math.inf] * self.area
         g_score[self.idx(origin.x, origin.y)] = 0
 
-        closed_set = set()
+        closed_set = bytearray(self.area)
 
         while open_set:
-            _, cx, cy = heapq.heappop(open_set)
+            c = heapq.heappop(open_set)
 
-            # Skip already-settled nodes
-            if (cx, cy) in closed_set:
+            ci = self.idx(c[1], c[2])
+            if closed_set[ci]:
                 continue
-            closed_set.add((cx, cy))
+            closed_set[ci] = 1
 
             if (
-                (cx - target.x) ** 2 +
-                (cy - target.y) ** 2
+                (c[1] - target.x) ** 2 +
+                (c[2] - target.y) ** 2
             ) <= target_distance_squared:
-                cell = self.map[self.idx(cx, cy)]
+                cell = self.map[ci]
                 if bypass_wall or cell not in walls:
-                    return self.reconstruct_path(came_from, (cx, cy))
-
-            ci = self.idx(cx, cy)
+                    return self.reconstruct_path(came_from, (c[1], c[2]))
 
             for dx, dy, penalty in (
                 direction_to_delta(DeltaTypes.CARDINAL) 
-                if (cx == origin.x and cy == origin.y and delta_type == DeltaTypes.BRIDGE) else deltas
+                if (c[1] == origin.x and c[2] == origin.y and delta_type == DeltaTypes.BRIDGE) else deltas
             ):
-                nx = cx + dx
-                ny = cy + dy
+                nx = c[1] + dx
+                ny = c[2] + dy
 
-                if (nx, ny) in closed_set:
-                    continue
-                
                 if not is_in_bound(nx, ny, self.w, self.h):
+                    continue
+
+                ni = self.idx(nx, ny)
+                if closed_set[ni]:
                     continue
 
                 # Always allow stepping onto the target cell regardless of
@@ -140,17 +139,16 @@ class AStarPathfinder:
                     continue
                 
                 if is_target_cell and not bypass_wall:
-                    cell = self.map[self.idx(nx, ny)]
+                    cell = self.map[ni]
                     if cell is not None and cell in walls:
                         continue
 
-                ni = self.idx(nx, ny)
                 new_g = g_score[ci] + penalty
 
                 if new_g >= g_score[ni]:
                     continue
 
-                came_from[(nx, ny)] = (cx, cy)
+                came_from[(nx, ny)] = (c[1], c[2])
                 g_score[ni] = new_g
                 f_score = new_g + self.heuristic(
                     nx, ny, target.x, target.y, allow_diag
