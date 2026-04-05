@@ -9,23 +9,18 @@ class Launcher(EBase):
         self.aggression_targets = []
         self.enemy_targets = []
         self.can_launch = []
+        self.defender = (
+            check_for_entity(ct.get_position(), ct, DIRECTIONS, EntityType.CONVEYOR, ct.get_team()) or \
+            check_for_entity(ct.get_position(), ct, DIRECTIONS, EntityType.SPLITTER, ct.get_team()) or \
+            check_for_entity(ct.get_position(), ct, DIRECTIONS, EntityType.BRIDGE, ct.get_team())
+        )
         super().__init__(ct)
     
     def run_tick(self, ct: Controller):
         self.ct = ct
 
         self.update_map()
-        if not self.base_position:
-            for building_id in ct.get_nearby_buildings():
-                building_entity = ct.get_entity_type(building_id)
-                if building_entity == EntityType.MARKER and ct.get_team(building_id) == self.team:
-                    value = ct.get_marker_value(building_id)
-                    self.base_position = decode_coordinate(value)
-                    break
-
-        for bot_id in ct.get_nearby_entities(2):
-            if ct.get_entity_type(bot_id) != EntityType.BUILDER_BOT:
-                return
+        self.launch_bots()
 
     def update_map(self):
         self.aggression_targets = []
@@ -56,18 +51,30 @@ class Launcher(EBase):
             elif entity_type == EntityType.HARVESTER:
                 self.evaluate_aggressor_target(entity_pos, entity_id, None, entity_type)
 
-            elif entity_type == EntityType.BUILDER_BOT and entity_pos.distance_squared(self.ct.get_position()) <= 2:
+            elif entity_type == EntityType.BUILDER_BOT and entity_pos.distance_squared(self.ct.get_position()) <= 2 and get_entity(entity_pos, self.ct) != EntityType.CORE:
                 self.can_launch.append(entity_id)
 
     def launch_bots(self):
         def launch_enemy_bots():
             if not self.enemy_targets:
                 return False
-            
-            self.enemy_targets.sort(lambda v, p, _: v * 1000 + self.ct.get_position().distance_squared(p) ,reverse=True)
+            enemy_pos = self.ct.get_position(random.choice(enemy_bots))
+            self.enemy_targets.sort(key=lambda item: item[0] * 1000 + self.ct.get_position().distance_squared(item[1]), reverse=True)
             for _, target, _ in self.enemy_targets:
-                if self.ct.can_launch()
+                if self.ct.can_launch(enemy_pos, target):
+                    self.ct.launch(enemy_pos, target)
+                    return True
             return False
+        
+        def launch_allied_bots():
+            if not self.aggression_targets:
+                return False
+            ally_pos = self.ct.get_position(random.choice(allied_bots))
+            self.aggression_targets.sort(reverse=True)
+            for _, target, _ in self.aggression_targets:
+                if self.ct.can_launch(ally_pos, target):
+                    self.ct.launch(ally_pos, target)
+                    return
 
         if not self.can_launch:
             return
@@ -76,7 +83,11 @@ class Launcher(EBase):
         if enemy_bots and launch_enemy_bots():
             return
         
+        if self.defender:
+            return
+        
         allied_bots = list(filter(lambda x: self.ct.get_team(x) == self.team, self.can_launch))
+        launch_allied_bots()
         
 
     def evaluate_aggressor_target(self, tile: Position, building_id, bot_id, entity_type):
@@ -131,7 +142,7 @@ class Launcher(EBase):
             
             self.aggression_targets.append((eval, target_tile, entity_type))
         
-        if bot_id or not building_id:
+        if bot_id or not building_id or self.ct.get_team(building_id) == self.team:
             return # Do not target ones that have a bot on them
         
         if entity_type == EntityType.HARVESTER:

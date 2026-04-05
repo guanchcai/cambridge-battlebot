@@ -2,6 +2,7 @@ from cambc import Direction, EntityType, Environment
 from enum import Enum
 
 DIRECTIONS = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.NORTHEAST, Direction.NORTHWEST, Direction.SOUTHEAST, Direction.SOUTHWEST}
+ALL_DIRECTIONS = {Direction.CENTRE, Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.NORTHEAST, Direction.NORTHWEST, Direction.SOUTHEAST, Direction.SOUTHWEST}
 CARDINAL_DIRECTIONS = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST}
 DIAGONAL_DIRECTIONS = {Direction.NORTHEAST, Direction.NORTHWEST, Direction.SOUTHEAST, Direction.SOUTHWEST}
 PASSABLE = {None, EntityType.BRIDGE, EntityType.CONVEYOR, EntityType.ROAD, EntityType.ARMOURED_CONVEYOR, EntityType.BUILDER_BOT, EntityType.CORE, EntityType.MARKER, EntityType.SPLITTER}
@@ -40,4 +41,10 @@ class DeltaTypes(Enum):
     ALL = 2
     BRIDGE = 3
 
-BASE_DIST = 35
+BASE_DIST = 20
+FOUNDARY_THRESHHOLD = 600
+class TargetTypes(Enum):
+    CONNECT_BRIDGE = 0
+    BASE = 1
+    ORE = 2
+     

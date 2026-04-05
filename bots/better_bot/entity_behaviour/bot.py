@@ -28,6 +28,8 @@ class Bot(EBase):
         self.y_axis_symmetry = True
         self.rotational_symmetry = True
 
+        self.enemy_base_pos = None
+
         # Exploration variables
         self.unexplored = set()
         self.buckets = {}
@@ -60,6 +62,12 @@ class Bot(EBase):
             if ct.can_place_marker(pos):
                 ct.place_marker(pos, encode_coordinate(self.base_position))
                 break
+        
+        for d in ALL_DIRECTIONS:
+            pos = position.add(d)
+            if ct.can_heal(pos):
+                ct.heal(pos)
+                break
 
 
     def update_map(self):
@@ -67,6 +75,9 @@ class Bot(EBase):
             building_id = self.ct.get_tile_building_id(tile)
             building_entity = self.ct.get_entity_type(building_id) if building_id else None
             same_team = self.ct.get_team(building_id) == self.team if building_id else True
+            bot_id = self.ct.get_tile_builder_bot_id(tile)
+            if bot_id == self.ct.get_id():
+                bot_id = None
 
             env = self.ct.get_tile_env(tile)
             self.set_from_pos(self.environment_map, tile, env)
@@ -80,14 +91,17 @@ class Bot(EBase):
             if building_entity == EntityType.CORE and not same_team:
                 env = Environment.WALL
 
+            if bot_id and self.current_state != BotState.GOING_BACK:
+                env = Environment.WALL
+
             self.set_from_pos(self.internal_map, tile, env)
 
-            if env != Environment.EMPTY and self.distance_map and tile in self.distance_map and tile != self.current_target_position:
+            self.update_tile(tile, building_id, bot_id)
+            
+            if self.get_from_pos(self.internal_map, tile) != Environment.EMPTY and self.distance_map and tile in self.distance_map and tile != self.current_target_position:
                 print(f"Encountered wall in path on position: {tile}")
                 self.distance_map = None
 
-            self.update_tile(tile, building_id, self.ct.get_tile_builder_bot_id(tile))
-            
             if tile in self.unexplored:
                 self.unexplored.remove(tile)
                 bucket = (tile.x // self.bucket_size, tile.y // self.bucket_size)
@@ -130,11 +144,6 @@ class Bot(EBase):
         self.previous_position = position if position != self.ct.get_position() else self.previous_position
 
     def build_road(self, move_pos: Position, next_pos: Position):
-        if check_for_entity(move_pos, self.ct, DIRECTIONS, EntityType.CORE, self.ct.get_team()):
-            d = decide_splitter_direction(move_pos, self.base_position)
-            if self.ct.can_build_splitter(move_pos, d):
-                self.ct.build_splitter(move_pos, d)
-
         if self.ct.can_build_road(move_pos):
             self.ct.build_road(move_pos)
         
@@ -215,12 +224,15 @@ class Bot(EBase):
         
         if self.y_axis_symmetry:
             ref_tile = Position(w - tile.x, tile.y)
+            self.enemy_base_pos = Position(w - self.base_position.x, self.base_position.y)
             
         if self.x_axis_symmetry:
             ref_tile = Position(tile.x, h - tile.y)
+            self.enemy_base_pos = Position(self.base_position.x, h - self.base_position.y)
             
         if self.rotational_symmetry:
             ref_tile = Position(w - tile.x, h - tile.y)
+            self.enemy_base_pos = Position(w - self.base_position.x, h - self.base_position.y)
         
         new_tile = False
         if self.get_from_pos(self.internal_map, ref_tile) is None:

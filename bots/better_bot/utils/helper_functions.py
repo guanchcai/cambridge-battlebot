@@ -150,12 +150,12 @@ def decide_splitter_direction(pos: Position, base_pos: Position):
     x_dif = pos.x - base_pos.x
     y_dif = pos.y - base_pos.y
     if abs(x_dif) > abs(y_dif):
-        if x_dif < 0:
+        if y_dif > 0:
             d = Direction.NORTH
         else:
             d = Direction.SOUTH
     else:
-        if y_dif < 0:
+        if x_dif < 0:
             d = Direction.EAST
         else:
             d = Direction.WEST

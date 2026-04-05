@@ -1,40 +1,6 @@
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                ██████████████                                                  
-              ████            ██                                                
-                                ██                                              
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                                                                
-                                  
+Position(x=11, y=25)
+Called
+Trying to build road at Position(x=30, y=10)
+Visited: {Position(x=8, y=30), Position(x=15, y=30), Position(x=10, y=30), Position(x=18, y=20), Position(x=6, y=1), Position(x=15, y=39), Position(x=9, y=31), Position(x=33, y=38), Position(x=2, y=3), Position(x=3, y=37), Position(x=1, y=26), Position(x=13, y=12), Position(x=6, y=6), Position(x=5, y=9), Position(x=9, y=30), Position(x=31, y=37), Position(x=8, y=2)}
+Building conveyor chain from Position(x=30, y=10) to Position(x=29, y=10)
+Position(x=30, y=10) Position(x=29, y=10) Position(x=28, y=10) Position(x=27, y=10) Position(x=26, y=10) Position(x=25, y=10) Position(x=24, y=10) Position(x=23, y=10) Position(x=22, y=10) Position(x=21, y=10) Position(x=19, y=12) Position(x=18, y=12) Position(x=17, y=12) Position(x=16, y=12) Position(x=15, y=12) Position(x=15, y=13) Position(x=14, y=13) Position(x=14, y=14) Position(x=14, y=15) Position(x=14, y=16) Position(x=14, y=17) Position(x=14, y=18) Position(x=14, y=19) Position(x=14, y=20) Position(x=12, y=22) Position(x=12, y=23) Position(x=12, y=24) Position(x=11, y=24) Position(x=11, y=25)

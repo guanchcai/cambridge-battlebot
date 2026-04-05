@@ -12,3 +12,7 @@ class Core(EBase):
             if ct.can_spawn(spawn_pos):
                 ct.spawn_builder(spawn_pos)
                 self.spawn_queue.pop(0)
+
+        ti, ax = ct.get_global_resources()
+        if ax > ti // 2:
+            ct.convert(ax - ti // 2)

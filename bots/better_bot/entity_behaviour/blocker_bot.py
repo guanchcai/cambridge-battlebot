@@ -31,7 +31,12 @@ class Blocker(Bot):
             self.visited_ore_sites.add(self.current_target_position)
             self.set_wandering()
     def build_road(self, move_pos: Position, next_pos: Position) -> bool:
+        if self.ct.get_global_resources()[0] <= 50:
+            return False
         print(f"Trying to build road at {move_pos}")
+        if move_pos.distance_squared(self.ct.get_position()) > 2:
+            self.distance_map = None
+            return True
         return super().build_road(move_pos, next_pos)
     
     def run_flood_fill(self):
