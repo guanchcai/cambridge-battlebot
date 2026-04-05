@@ -1,8 +1,8 @@
-from entity_behaviour.entity_base import EBase
+from bots.better_bot.entity_behaviour.entity_base import EBase
 from cambc import Controller, Position, Environment, EntityType
-from utils.constants import *
-from utils.path_finder import *
-from utils.helper_functions import *
+from bots.better_bot.utils.constants import *
+from bots.better_bot.utils.path_finder import *
+from bots.better_bot.utils.helper_functions import *
 import random
 
 class Bot(EBase):

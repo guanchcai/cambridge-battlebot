@@ -1,5 +1,5 @@
 from cambc import Controller, Position, EntityType, Team
-from utils.constants import *
+from bots.better_bot.utils.constants import *
 from typing import overload
 import random
 
