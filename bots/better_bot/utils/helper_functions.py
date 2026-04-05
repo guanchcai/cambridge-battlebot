@@ -43,9 +43,10 @@ def direction_to_delta(direction_type: DeltaTypes) -> list[tuple[int, int, float
         case DeltaTypes.DIAGONAL:
             return DIAGONAL_DELTAS
 
-def is_road(pos: Position, ct: Controller) -> bool:
+def is_team_road(pos: Position, ct: Controller) -> bool:
     building_id = ct.get_tile_building_id(pos)
-    return building_id and ct.get_entity_type(building_id) == EntityType.ROAD
+    etype = ct.get_entity_type(building_id) if building_id else None
+    return building_id and etype == EntityType.ROAD and ct.get_team(building_id) == ct.get_team()
 
 def min_with_random_tiebreak(iterable, key=(lambda x: x)):
     it = iter(iterable)
@@ -162,7 +163,7 @@ def decide_splitter_direction(pos: Position, base_pos: Position):
     return d
 
 def get_conveyor_target(pos: Position, ct: Controller):
-    building_id = ct.get_id(pos)
+    building_id = ct.get_tile_building_id(pos)
     building_entity = get_entity(pos, ct)
     position = None
     match building_entity:
@@ -224,10 +225,13 @@ def is_connected_to_turret(pos: Position, team: Team, ct: Controller) -> bool:
     return not TURRETS.isdisjoint(connections)
 
 def is_directly_connected_to_turret(pos:Position, team: Team, ct: Controller) -> bool:
-    turret_id = ct.get_tile_building_id(get_conveyor_target(pos, ct))
+    c_target = get_conveyor_target(pos, ct)
+    if not checkable_position(c_target, ct):
+        return False
+    turret_id = ct.get_tile_building_id(c_target)
     if turret_id:
         turret_type = ct.get_entity_type(turret_id)
-        if turret_type in TURRETS:
+        if turret_type in TURRETS and ct.get_team(turret_id) == team:
             return True
 
     return False 

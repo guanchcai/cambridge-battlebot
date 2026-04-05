@@ -3,7 +3,7 @@ from cambc import Direction
 
 class Core(EBase):
     def __init__(self, ct: Controller):
-        self.spawn_queue = [Direction.EAST, Direction.CENTRE]
+        self.spawn_queue = [Direction.EAST, Direction.CENTRE, Direction.EAST]
         super().__init__(ct)
     
     def run_tick(self, ct: Controller):

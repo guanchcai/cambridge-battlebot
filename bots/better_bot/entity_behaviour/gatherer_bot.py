@@ -49,79 +49,6 @@ class Gatherer(Bot):
         
         position = self.ct.get_position()
 
-        def build_conveyor_chain(from_pos: Position, to_pos: Position, connect_next=True):
-            bridge_target_pos_choices = get_positions_of_entities(from_pos, self.ct, 9, EntityType.SPLITTER, self.ct.get_team())
-            
-            if bridge_target_pos_choices and self.ct.get_tile_env(from_pos) not in ORE_SITES:
-                bridge_target_pos = random.choice(bridge_target_pos_choices)
-                to_pos = bridge_target_pos
-            elif from_pos.distance_squared(self.base_position) <= BASE_DIST and not bridge_target_pos_choices:
-                return
-
-            print(f"Building conveyor chain from {from_pos} to {to_pos}")
-            if position.distance_squared(from_pos) > 1:
-                self.set_target(from_pos, 0, BotState.GOING_TO_TARGET, TargetTypes.CONNECT_BRIDGE)
-                return
-
-            building_id = self.ct.get_tile_building_id(from_pos)
-            building_type = self.ct.get_entity_type(building_id) if building_id else None
-            same_team = building_id and self.ct.get_team(building_id) == self.ct.get_team()
-            
-            if same_team and building_type in CONVEYORS:
-                if not build_harvester():
-                    self.set_wandering()
-                return
-
-            if from_pos.distance_squared(to_pos) > 1:
-                if self.ct.can_build_bridge(from_pos, to_pos):
-                    self.ct.build_bridge(from_pos, to_pos)
-
-                    if get_entity(to_pos, self.ct) in CONVEYORS:
-                        self.just_bridged = True
-                    
-                    if connect_next:
-                        self.set_target(to_pos, 0, BotState.GOING_TO_TARGET, TargetTypes.CONNECT_BRIDGE)
-            elif from_pos.distance_squared(to_pos) == 1 and self.ct.can_build_conveyor(from_pos, from_pos.direction_to(to_pos)):
-                self.ct.build_conveyor(from_pos, from_pos.direction_to(to_pos))
-        def build_harvester(p=position):
-            potential_harvester_pos = None
-            for d in CARDINAL_DIRECTIONS:
-                check_pos = p.add(d)
-                if not checkable_position(check_pos, self.ct):
-                    continue
-                if self.ct.get_tile_env(check_pos) in ORE_SITES and check_pos in self.visited_ore_sites:
-                    potential_harvester_pos = check_pos
-                    break
-
-            building_entity = get_entity(potential_harvester_pos, self.ct) if potential_harvester_pos else None
-            if potential_harvester_pos and potential_harvester_pos in self.visited_ore_sites:
-                if building_entity in IGNORED_BUILDINGS:
-                    if self.ct.can_build_harvester(potential_harvester_pos):
-                        self.ct.build_harvester(potential_harvester_pos)
-                    return True
-        def build_bot_thrower():
-            if self.ct.get_tile_env(position) != Environment.EMPTY or get_entity(position, self.ct) is None:
-                return
-            
-            ret = False
-            if is_exposed(self.previous_position, self.ct) or (is_exposed(position, self.ct) and get_entity(position, self.ct) == EntityType.BRIDGE): # Duplicate code fix later
-                candidate_positions = []
-                for d in CARDINAL_DIRECTIONS:
-                    check_pos = position.add(d)
-                    if not checkable_position(check_pos, self.ct) or \
-                        check_pos == move_pos or \
-                        self.ct.get_tile_env(check_pos) != Environment.EMPTY or \
-                        get_entity(check_pos, self.ct) not in IGNORED_BUILDINGS:
-                        continue
-                    ret = True
-                    candidate_positions.append(check_pos)
-
-                pos_to_build = min(candidate_positions, key=lambda p: self.previous_position.distance_squared(p)) if candidate_positions else None
-                if pos_to_build:
-                    if self.ct.can_build_launcher(pos_to_build):
-                        self.ct.build_launcher(pos_to_build)
-                        self.launchers_built += 1
-            return ret
         if checkable_position(self.current_target_position, self.ct):
             if destroyable(self.current_target_position, self.ct):
                 print("Can destroy")
@@ -132,11 +59,11 @@ class Gatherer(Bot):
             return super().build_road(move_pos, next_pos)
 
         # This runs 4 extra checks each tick idk if its good or not
-        if build_harvester():
+        if self.build_harvester(position):
             print("Need harvesters")
             return False
         
-        if build_bot_thrower():
+        if self.build_bot_thrower(position, move_pos):
             print("Need launchers")
             return False
         
@@ -154,7 +81,7 @@ class Gatherer(Bot):
         if self.ct.can_fire(position) and not same_team:
             self.ct.fire(position)
         
-        if self.ct.can_destroy(position) and same_team and self.ct.get_entity_type(current_tile_id) == EntityType.ROAD:
+        if self.ct.can_destroy(position) and is_team_road(position, self.ct):
             self.ct.destroy(position)
             
         current_tile_entity = get_entity(position, self.ct)
@@ -163,10 +90,10 @@ class Gatherer(Bot):
             return False
 
         if current_tile_entity is None and self.ct.get_tile_env(position) not in ORE_SITES:
-            build_conveyor_chain(position, move_pos)
+            self.build_conveyor_chain(position, move_pos)
             return False
         elif next_pos:
-            build_conveyor_chain(move_pos, next_pos)
+            self.build_conveyor_chain(move_pos, next_pos)
             
         return True
     
@@ -235,7 +162,9 @@ class Gatherer(Bot):
                 if not checkable_position(check_pos, self.ct) or d == self.dont_build_wall:
                     continue
                 building_entity = get_entity(check_pos, self.ct)
-                if building_entity in IGNORED_BUILDINGS and self.ct.get_tile_env(check_pos) != Environment.WALL:
+                if (building_entity in IGNORED_BUILDINGS or is_team_road(check_pos, self.ct)) and self.ct.get_tile_env(check_pos) != Environment.WALL:
+                    if self.ct.can_destroy(check_pos):
+                        self.ct.destroy(check_pos)
                     if self.ct.can_build_barrier(check_pos):
                         self.ct.build_barrier(check_pos)
                     return
@@ -252,14 +181,14 @@ class Gatherer(Bot):
                             self.ct.get_tile_env(check_pos) != Environment.EMPTY or \
                             get_entity(check_pos, self.ct) not in IGNORED_BUILDINGS:
                             continue
-                        elif self.ct.can_destroy(check_pos) and get_entity(check_pos, self.ct) == EntityType.ROAD:
+                        elif self.ct.can_destroy(check_pos) and is_team_road(check_pos, self.ct):
                             self.ct.destroy(check_pos)
                         if self.ct.can_build_launcher(check_pos):
                             self.ct.build_launcher(check_pos)
                             self.launchers_built += 1
                             break
 
-                if same_team and self.ct.can_destroy(position) and self.ct.get_entity_type(building_id) == EntityType.ROAD:
+                if self.ct.can_destroy(position) and is_team_road(position, self.ct):
                     self.ct.destroy(position)
 
                 building_entity = get_entity(position, self.ct)
@@ -311,3 +240,85 @@ class Gatherer(Bot):
     def set_target(self, target_pos, distance_squared, state, target_type):
         self.target_type = target_type
         return super().set_target(target_pos, distance_squared, state)
+    
+    
+    def build_conveyor_chain(self, from_pos: Position, to_pos: Position, connect_next=True):
+        position = self.ct.get_position()
+        bridge_target_pos_choices = get_positions_of_entities(from_pos, self.ct, 9, EntityType.SPLITTER, self.ct.get_team())
+        
+        if bridge_target_pos_choices and self.ct.get_tile_env(from_pos) not in ORE_SITES:
+            bridge_target_pos = random.choice(bridge_target_pos_choices)
+            to_pos = bridge_target_pos
+        elif from_pos.distance_squared(self.base_position) <= BASE_DIST and not bridge_target_pos_choices:
+            return
+
+        print(f"Building conveyor chain from {from_pos} to {to_pos}")
+        if position.distance_squared(from_pos) > 1:
+            self.set_target(from_pos, 0, BotState.GOING_TO_TARGET, TargetTypes.CONNECT_BRIDGE)
+            return
+
+        building_id = self.ct.get_tile_building_id(from_pos)
+        building_type = self.ct.get_entity_type(building_id) if building_id else None
+        same_team = building_id and self.ct.get_team(building_id) == self.ct.get_team()
+        
+        if same_team and building_type in CONVEYORS:
+            if not self.build_harvester(position):
+                self.set_wandering()
+            return
+
+        if from_pos.distance_squared(to_pos) > 1:
+            if self.ct.can_build_bridge(from_pos, to_pos):
+                self.ct.build_bridge(from_pos, to_pos)
+
+                if get_entity(to_pos, self.ct) in CONVEYORS:
+                    self.just_bridged = True
+                
+                if connect_next:
+                    self.set_target(to_pos, 0, BotState.GOING_TO_TARGET, TargetTypes.CONNECT_BRIDGE)
+        elif from_pos.distance_squared(to_pos) == 1 and self.ct.can_build_conveyor(from_pos, from_pos.direction_to(to_pos)):
+            self.ct.build_conveyor(from_pos, from_pos.direction_to(to_pos))
+    
+    def build_harvester(self, position):
+        potential_harvester_pos = None
+        for d in CARDINAL_DIRECTIONS:
+            check_pos = position.add(d)
+            if not checkable_position(check_pos, self.ct):
+                continue
+            if self.ct.get_tile_env(check_pos) in ORE_SITES and check_pos in self.visited_ore_sites:
+                potential_harvester_pos = check_pos
+                break
+
+        building_entity = get_entity(potential_harvester_pos, self.ct) if potential_harvester_pos else None
+        if potential_harvester_pos and potential_harvester_pos in self.visited_ore_sites:
+            if building_entity in IGNORED_BUILDINGS or is_team_road(potential_harvester_pos, self.ct):
+                if self.ct.can_destroy(potential_harvester_pos):
+                    self.ct.destroy(potential_harvester_pos)
+                if self.ct.can_build_harvester(potential_harvester_pos):
+                    self.ct.build_harvester(potential_harvester_pos)
+                return True
+            
+    def build_bot_thrower(self, position, move_pos):
+        if self.ct.get_tile_env(position) != Environment.EMPTY or get_entity(position, self.ct) is None:
+            return
+        
+        ret = False
+        if is_exposed(self.previous_position, self.ct) or (is_exposed(position, self.ct) and get_entity(position, self.ct) == EntityType.BRIDGE): # Duplicate code fix later
+            candidate_positions = []
+            for d in CARDINAL_DIRECTIONS:
+                check_pos = position.add(d)
+                if not checkable_position(check_pos, self.ct) or \
+                    check_pos == move_pos or \
+                    self.ct.get_tile_env(check_pos) != Environment.EMPTY or \
+                    (get_entity(check_pos, self.ct) not in IGNORED_BUILDINGS and not is_team_road(check_pos, self.ct)):
+                    continue
+                ret = True
+                candidate_positions.append(check_pos)
+
+            pos_to_build = min(candidate_positions, key=lambda p: self.previous_position.distance_squared(p)) if candidate_positions else None
+            if pos_to_build:
+                if self.ct.can_destroy(pos_to_build) and is_team_road(pos_to_build, self.ct):
+                    self.ct.destroy(pos_to_build)
+                if self.ct.can_build_launcher(pos_to_build):
+                    self.ct.build_launcher(pos_to_build)
+                    self.launchers_built += 1
+        return ret

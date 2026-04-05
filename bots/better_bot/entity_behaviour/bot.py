@@ -58,16 +58,13 @@ class Bot(EBase):
                 ct.place_marker(pos, encode_coordinate(self.base_position))
                 break
         
-        for d in ALL_DIRECTIONS:
-            pos = position.add(d)
-            if ct.can_heal(pos):
-                ct.heal(pos)
-                break
+        if ct.can_heal(position):
+            ct.heal(position)
 
 
     def update_map(self):
         self_id = self.ct.get_id()
-        for tile in self.ct.get_nearby_tiles(16):
+        for tile in self.ct.get_nearby_tiles():
             building_id = self.ct.get_tile_building_id(tile)
             building_entity = self.ct.get_entity_type(building_id) if building_id else None
             same_team = self.ct.get_team(building_id) == self.team if building_id else True
@@ -137,7 +134,7 @@ class Bot(EBase):
         if self.ct.can_move(chosen) and build_success:
             self.ct.move(chosen)
             
-        if self.ct.can_destroy(position) and is_road(position, self.ct):
+        if self.ct.get_current_round() < 50 and self.ct.can_destroy(position) and is_team_road(position, self.ct):
             self.ct.destroy(position)
 
         self.previous_position = position if position != self.ct.get_position() else self.previous_position

@@ -20,12 +20,14 @@ class BaseBuilder(Bot):
         del_x = abs(tile.x - self.base_position.x)
         del_y = abs(tile.y - self.base_position.y)
 
+        entitytype = get_entity(tile, self.ct)
+
         if (del_x == 0 or del_y == 0) and max(del_x, del_y) == 2 and env == Environment.EMPTY:
             if self.ct.get_global_resources()[0] >= FOUNDARY_THRESHHOLD or self.ct.get_global_resources()[1] > 0:
-                if get_entity(tile, self.ct) != EntityType.FOUNDRY:
+                if entitytype != EntityType.FOUNDRY:
                     self.potential_targets.append(tile)
-            elif get_entity(tile, self.ct) in IGNORED_BUILDINGS:
-                    self.potential_targets.append(tile)
+            elif entitytype == EntityType.ROAD or entitytype in IGNORED_BUILDINGS:
+                self.potential_targets.append(tile)
         
         elif max(del_x, del_y) == 2 and env == Environment.EMPTY:
             if get_entity(tile, self.ct) in IGNORED_BUILDINGS:
@@ -52,6 +54,8 @@ class BaseBuilder(Bot):
     def reached_target(self):
         del_x = abs(self.current_target_position.x - self.base_position.x)
         del_y = abs(self.current_target_position.y - self.base_position.y)
+        if self.ct.can_destroy(self.current_target_position) and get_entity(self.current_target_position, self.ct) == EntityType.ROAD:
+            self.ct.destroy(self.current_target_position)
         if del_x == del_y and del_x == 2:
             if self.ct.can_build_barrier(self.current_target_position):
                 self.ct.build_barrier(self.current_target_position)
