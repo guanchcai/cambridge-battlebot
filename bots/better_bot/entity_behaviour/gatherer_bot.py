@@ -139,7 +139,7 @@ class Gatherer(Bot):
                 self.ct.fire(self.position)
 
         reached_ore = self.current_state == BotState.GOING_TO_TARGET and env in ORE_SITES
-        can_build = self.ct.get_global_resources()[0] >= self.ct.get_harvester_cost()[0]
+        can_build = self.ct.get_global_resources()[0] >= self.ct.get_harvester_cost()[0] + self.ct.get_bridge_cost()[0]
         print(self.ct.get_cpu_time_elapsed())
         if reached_ore and self.dont_build_wall is None:
             path_back = self.path_finder.run(
@@ -264,7 +264,7 @@ class Gatherer(Bot):
                 self.set_wandering()
             return
 
-        if from_pos.distance_squared(to_pos) > 1:
+        if from_pos.distance_squared(to_pos) > 1 or get_skibidi_distance(to_pos, self.base_position) == 2:
             if self.ct.can_build_bridge(from_pos, to_pos):
                 self.ct.build_bridge(from_pos, to_pos)
 

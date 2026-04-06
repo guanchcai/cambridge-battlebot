@@ -5,16 +5,17 @@ from utils.constants import *
 
 class Launcher(EBase):
     def __init__(self, ct: Controller):
-        self.base_position = None
+        super().__init__(ct)
+        self.base_position = Position(self.map_width // 2, self.map_height // 2)
         self.aggression_targets = []
         self.enemy_targets = []
+        self.conveyor_ends = {}
         self.can_launch = []
         self.defender = (
             check_for_entity(ct.get_position(), ct, DIRECTIONS, EntityType.CONVEYOR, ct.get_team()) or \
             check_for_entity(ct.get_position(), ct, DIRECTIONS, EntityType.SPLITTER, ct.get_team()) or \
             check_for_entity(ct.get_position(), ct, DIRECTIONS, EntityType.BRIDGE, ct.get_team())
         )
-        super().__init__(ct)
     
     def run_tick(self, ct: Controller):
         self.ct = ct
@@ -26,6 +27,7 @@ class Launcher(EBase):
         self.aggression_targets = []
         self.enemy_targets = []
         self.can_launch = []
+        self.conveyor_ends = {}
 
         for entity_id in self.ct.get_nearby_entities():
             entity_type = self.ct.get_entity_type(entity_id)
@@ -55,7 +57,7 @@ class Launcher(EBase):
             if not self.enemy_targets:
                 return False
             enemy_pos = self.ct.get_position(random.choice(enemy_bots))
-            self.enemy_targets.sort(key=lambda item: item[0] * 1000 + self.ct.get_position().distance_squared(item[1]), reverse=True)
+            self.enemy_targets.sort(key=lambda item: item[0] * 1000 + self.base_position.distance_squared(item[1]), reverse=True)
             print(self.enemy_targets)
             for target in self.enemy_targets:
                 if self.ct.can_launch(enemy_pos, target[1]):
@@ -68,7 +70,7 @@ class Launcher(EBase):
             if not self.aggression_targets:
                 return False
             ally_pos = self.ct.get_position(random.choice(allied_bots))
-            self.aggression_targets.sort(reverse=True)
+            self.aggression_targets.sort(key=lambda item: item[0] * 1000 - self.base_position.distance_squared(item[1]), reverse=True)
             for target in self.aggression_targets:
                 if self.ct.can_launch(ally_pos, target[1]):
                     self.ct.launch(ally_pos, target[1])
@@ -87,10 +89,79 @@ class Launcher(EBase):
         allied_bots = list(filter(lambda x: self.ct.get_team(x) == self.team, self.can_launch))
         launch_allied_bots()
         
-
     def evaluate_aggressor_target(self, tile: Position, building_id, bot_id, entity_type):
         def evaluate_harvesters():
-            for d in DIRECTIONS:
+            for d in CARDINAL_DIRECTIONS:
+                check_pos = tile.add(d)
+                if not checkable_position(check_pos, self.ct):
+                    continue
+                b_entity = get_entity(check_pos, self.ct)
+                bot_id = self.ct.get_tile_builder_bot_id(check_pos)
+                if bot_id and bot_id != self.ct.get_id():
+                    continue
+                if b_entity in IGNORED_BUILDINGS or b_entity == EntityType.ROAD:
+                    self.aggression_targets.append((100, check_pos))
+                # elif b_entity in PASSABLE and b_entity != EntityType.CORE:
+                #     self.aggression_targets.append((50, check_pos))
+
+            """
+                50: harvesters next to a passable (conveyors for example) this can be toned back down
+                100: harvesters with nothing next to them
+            """
+        
+        def evaluate_conveyors():
+            resource = self.ct.get_stored_resource(building_id)
+            eval = 0
+            target_tile = tile
+
+            conveyor_end = self.get_ends(tile)
+            if not conveyor_end:
+                return
+            
+            for end_building in conveyor_end:
+                if end_building is None:
+                    return
+                if end_building[1] == self.team and (end_building[0] in TURRETS or end_building[0] == EntityType.BUILDER_BOT):
+                    return
+
+            match resource:
+                case ResourceType.REFINED_AXIONITE:
+                    eval = 10
+                case ResourceType.TITANIUM:
+                    eval = 9
+                case _:
+                    return
+            
+            conveyor_target = get_conveyor_target(tile, self.ct)
+            if conveyor_target and checkable_position(conveyor_target, self.ct):
+                b_id = self.ct.get_tile_builder_bot_id(conveyor_target)
+                if b_id is None and get_entity(conveyor_target, self.ct) in IGNORED_BUILDINGS:
+                    eval += 8
+                    target_tile = conveyor_target
+            if is_directly_connected_to_turret(tile, other_team(self.team), self.ct):
+                eval += 5
+            """
+                9: titanium connecting to another conveyor belt / building
+                10: refined axiomnite connecting to another conveyor belt / building
+                14: titanium connecting to an enemy
+                15: refined axiomnite connecting to an enemy
+                19: titanium connecting to nothing
+                20: refined axiomnite connecting to nothing
+            """
+            
+            self.aggression_targets.append((eval, target_tile))
+        
+        if bot_id or not building_id:
+            return # Do not target ones that have a bot on them
+        
+        if entity_type == EntityType.HARVESTER:
+            evaluate_harvesters()
+        elif entity_type in CONVEYORS:
+            evaluate_conveyors()
+
+    
+        def evaluate_harvesters():
+            for d in CARDINAL_DIRECTIONS:
                 check_pos = tile.add(d)
                 if not checkable_position(check_pos, self.ct):
                     continue
@@ -147,3 +218,33 @@ class Launcher(EBase):
             evaluate_harvesters()
         elif entity_type in CONVEYORS:
             evaluate_conveyors()
+    
+    def get_ends(self, pos: Position) -> list[tuple[EntityType, Team] | None]:
+        if not checkable_position(pos, self.ct):
+            return [None] # None signifies going out of bounds
+
+        end = self.conveyor_ends.get(pos)
+        if end:
+            return end
+        
+        self.conveyor_ends[pos] = [] # To help with looping
+        building_id = self.ct.get_tile_building_id(pos)
+        building_entity = self.ct.get_entity_type(building_id) if building_id else None
+        if building_entity == EntityType.SPLITTER:
+            d = self.ct.get_direction(building_id)
+            pos1 = pos.add(d)
+            pos2 = pos.add(d.rotate_left().rotate_left())
+            pos3 = pos.add(d.rotate_right().rotate_right())
+            self.conveyor_ends[pos] = self.get_ends(pos1) + self.get_ends(pos2) + self.ends(pos3)
+        elif building_entity in CONVEYORS:
+            self.conveyor_ends[pos] = self.get_ends(get_conveyor_target(pos, self.ct))
+        elif building_entity in IGNORED_BUILDINGS or building_entity == EntityType.ROAD:
+            bot_id = self.ct.get_tile_builder_bot_id(pos)
+            if bot_id:
+                self.conveyor_ends[pos] = [(EntityType.BUILDER_BOT, self.ct.get_team(building_id))]
+            else:
+                self.conveyor_ends[pos] = [(EntityType.MARKER, Team.A)]
+        else:
+            self.conveyor_ends[pos] = [(building_entity, self.ct.get_team(building_id))]
+        
+        return self.conveyor_ends[pos]

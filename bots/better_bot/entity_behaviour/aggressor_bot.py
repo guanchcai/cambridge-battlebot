@@ -13,11 +13,13 @@ class Aggressor(Bot):
         self.own_launcher_pos = None
         self.enemy_launchers = set()
         self.rounds_without_launch = 0
+        self.conveyor_ends = {}
+        self.listening = False
         super().__init__(ct)
 
     def set_wandering(self):
         self.aggression_targets = []
-        super().set_wandering()
+        self.set_target(self.enemy_base_pos, 16, BotState.WANDERING)
 
     # def move_to_pos(self):
     #     position = self.ct.get_position()
@@ -38,7 +40,7 @@ class Aggressor(Bot):
         return True
     
     def run_flood_fill(self):
-        print(f"Going from {self.ct.get_position()} to {self.current_target_position}")
+        print(f"Going from {self.ct.get_position()} to {self.current_target_position} and ignoring walls = {self.target_distance_squared == 0}")
         self.distance_map = self.path_finder.run(
             self.ct.get_position(),
             self.current_target_position,
@@ -52,6 +54,7 @@ class Aggressor(Bot):
         self.aggression_targets = []
         self.turrets_in_range = []
         self.enemy_launchers = set()
+        self.conveyor_ends = {}
         super().update_map()
 
         # Store all the bot launchers of enemies as a set
@@ -68,12 +71,17 @@ class Aggressor(Bot):
 
         # 1: Loop through enemy launchers and mark nearby tiles as walls
         for launcher_pos in self.enemy_launchers:
-            for dx, dy in product(range(-3, 4), repeat=2):
-                if dx * dx + dy * dy <= TURRET_THREAT_RADIUS:
-                    wall_pos = Position(launcher_pos.x + dx, launcher_pos.y + dy)
-                    if is_in_bound(wall_pos, self.ct):
-                        self.set_from_pos(self.internal_map, wall_pos, Environment.WALL)
-            self.distance_map = None
+            print(launcher_pos)
+            for dx in range(-1, 2):
+                for dy in range(-1, 2):
+                    if dx * dx + dy * dy <= TURRET_THREAT_RADIUS:
+                        wall_pos = Position(launcher_pos.x + dx, launcher_pos.y + dy)
+                        if is_in_bound(wall_pos, self.ct):
+                            self.set_from_pos(self.internal_map, wall_pos, Environment.WALL)
+                        
+                            if self.distance_map and wall_pos in self.distance_map and wall_pos != self.current_target_position:
+                                print(f"Encountered wall in path on position: {wall_pos}")
+                                self.distance_map = None
 
         # 2: Pick best target if not already hunting
         if self.current_state != BotState.GOING_TO_TARGET:
@@ -82,10 +90,21 @@ class Aggressor(Bot):
                 self.set_target(best_target, 0, BotState.GOING_TO_TARGET)
 
     def update_tile(self, tile: Position, building_id: int | None, bot_id: int | None):
-        if building_id is None:
+        etype = self.ct.get_entity_type(building_id) if building_id else None
+
+        if self.current_state == BotState.GOING_TO_TARGET and tile == self.current_target_position:
+            if bot_id and bot_id != self.ct.get_id() and self.ct.get_team(bot_id) == self.team:
+                self.set_wandering()
+            if building_id and etype not in PASSABLE:
+                # Don't wander off if this is our own launcher we're trying to use
+                if etype == EntityType.LAUNCHER and self.ct.get_team(building_id) == self.team:
+                    pass
+                else:
+                    self.set_wandering()
+    
+        if building_id is None or (bot_id and bot_id != self.ct.get_id() and self.ct.get_team(bot_id) == self.team):
             return
         
-        etype = self.ct.get_entity_type(building_id)
         same_team = self.team == self.ct.get_team(building_id)
         if not same_team:
             if etype in TURRETS:
@@ -95,16 +114,6 @@ class Aggressor(Bot):
             else:
                 self.evaluate_aggressor_target(tile, building_id, bot_id, etype)
         
-        if self.current_state == BotState.GOING_TO_TARGET and tile == self.current_target_position:
-            if bot_id and bot_id != self.ct.get_id() and self.ct.get_team(bot_id) == self.ct.get_team():
-                self.set_wandering()
-            if building_id and etype not in PASSABLE:
-                # Don't wander off if this is our own launcher we're trying to use
-                if etype == EntityType.LAUNCHER and self.ct.get_team(building_id) == self.team:
-                    pass
-                else:
-                    self.set_wandering()
-    
     def unreachable_path(self):
         # Check if we already have a launcher built
         if self.own_launcher_pos is not None:
@@ -123,7 +132,6 @@ class Aggressor(Bot):
                     self.own_launcher_pos = None
                     self.rounds_without_launch = 0
                 else:
-                    self.rounds_without_launch += 1
                     self.set_target(self.own_launcher_pos, 2, BotState.GOING_TO_TARGET)
             else:
                 # Launcher is gone, reset
@@ -164,39 +172,43 @@ class Aggressor(Bot):
             self.set_target(self.nearest_unexplored(), 16, BotState.WANDERING)
             return
         
-        if self.own_launcher_pos is None and self.ct.can_fire(self.position):
+        building_id = self.ct.get_tile_building_id(self.current_target_position)
+        target_entity = self.ct.get_entity_type(building_id) if building_id else None
+        
+        if target_entity == EntityType.LAUNCHER:
+            self.rounds_without_launch += 1
+            self.listening = True
+
+        same_team = building_id and self.ct.get_team(building_id) == self.team
+        if self.ct.can_fire(self.position) and not same_team:
             self.ct.fire(self.position)
 
-        can_build = self.ct.get_global_resources()[0] >= self.ct.get_sentinel_cost()[0]
-        if can_build and self.enemy_base_pos:
+        can_build = self.ct.get_global_resources()[0] >= self.ct.get_sentinel_cost()[0] and self.ct.get_action_cooldown() == 0
+        if can_build and (building_id is None or is_team_road(self.position, self.ct)):
+            direction = self.position.direction_to(self.enemy_base_pos) if self.enemy_base_pos else self.position.direction_to(self.base_position).opposite()
             self.move_to_adjacent()
-            if self.ct.can_build_sentinel(self.position, self.position.direction_to(self.enemy_base_pos)):
-                self.ct.build_sentinel(self.position, self.position.direction_to(self.enemy_base_pos))
+
+            if is_team_road(self.position, self.ct):
+                if self.ct.can_destroy(self.position):
+                    self.ct.destroy(self.position)
+
+            if self.ct.can_build_sentinel(self.position, direction):
+                self.ct.build_sentinel(self.position, direction)
 
     def evaluate_aggressor_target(self, tile: Position, building_id, bot_id, entity_type):
         def evaluate_harvesters():
-            score = 0
-            for d in DIRECTIONS:
+            for d in CARDINAL_DIRECTIONS:
                 check_pos = tile.add(d)
                 if not checkable_position(check_pos, self.ct):
                     continue
                 b_entity = get_entity(check_pos, self.ct)
-                if b_entity in IGNORED_BUILDINGS or is_team_road(check_pos, self.ct):
-                    score = max(score, 100)
-                elif b_entity in PASSABLE and b_entity != EntityType.CORE:
-                    score = max(score, 50)
-            if score > 0:
-                self.aggression_targets.append((score, tile))
-        # def evaluate_harvesters():
-        #     for d in DIRECTIONS:
-        #         check_pos = tile.add(d)
-        #         if not checkable_position(check_pos, self.ct):
-        #             continue
-        #         b_entity = get_entity(check_pos, self.ct)
-        #         if b_entity in IGNORED_BUILDINGS or is_team_road(check_pos, self.ct):
-        #             self.aggression_targets.append((100, tile))
-        #         elif b_entity in PASSABLE and b_entity != EntityType.CORE:
-        #             self.aggression_targets.append((50, tile))
+                bot_id = self.ct.get_tile_builder_bot_id(check_pos)
+                if bot_id and bot_id != self.ct.get_id():
+                    continue
+                if self.ct.get_tile_env(check_pos) != Environment.WALL and (b_entity in IGNORED_BUILDINGS or b_entity == EntityType.ROAD):
+                    self.aggression_targets.append((100, check_pos))
+                # elif b_entity in PASSABLE and b_entity != EntityType.CORE:
+                #     self.aggression_targets.append((50, check_pos))
 
             """
                 50: harvesters next to a passable (conveyors for example) this can be toned back down
@@ -207,6 +219,17 @@ class Aggressor(Bot):
             resource = self.ct.get_stored_resource(building_id)
             eval = 0
             target_tile = tile
+
+            conveyor_end = self.get_ends(tile)
+            if not conveyor_end:
+                return
+            
+            for end_building in conveyor_end:
+                if end_building is None:
+                    return
+                if end_building[1] == self.team and (end_building[0] in TURRETS or end_building[0] == EntityType.BUILDER_BOT):
+                    return
+
             match resource:
                 case ResourceType.REFINED_AXIONITE:
                     eval = 10
@@ -216,9 +239,13 @@ class Aggressor(Bot):
                     return
             
             conveyor_target = get_conveyor_target(tile, self.ct)
-            if conveyor_target:
-                if is_directly_connected_to_turret(tile, other_team(self.team), self.ct):
-                    eval += 5
+            if conveyor_target and checkable_position(conveyor_target, self.ct):
+                b_id = self.ct.get_tile_builder_bot_id(conveyor_target)
+                if b_id is None and get_entity(conveyor_target, self.ct) in IGNORED_BUILDINGS:
+                    eval += 8
+                    target_tile = conveyor_target
+            if is_directly_connected_to_turret(tile, other_team(self.team), self.ct):
+                eval += 5
             """
                 9: titanium connecting to another conveyor belt / building
                 10: refined axiomnite connecting to another conveyor belt / building
@@ -235,7 +262,7 @@ class Aggressor(Bot):
         
         if entity_type == EntityType.HARVESTER:
             evaluate_harvesters()
-        elif entity_type in CONVEYORS:
+        elif self.enemy_base_pos and tile.distance_squared(self.enemy_base_pos) <= 13 ** 2 and entity_type in CONVEYORS:
             evaluate_conveyors()
 
     def _try_build_launcher(self):
@@ -256,4 +283,118 @@ class Aggressor(Bot):
             if self.ct.can_build_launcher(self.position):
                 self.ct.build_launcher(self.position)
                 return self.position
+    
+    def move_to_pos(self):
+        if self.previous_position and self.previous_position.distance_squared(self.position) > 2:
+            self.handle_thrown()
         
+        return super().move_to_pos()
+        
+    def handle_thrown(self):
+        print("yo???")
+        if is_valid_target(self.position, self.ct):
+            self.set_target(self.position, 0, BotState.GOING_TO_TARGET)
+            self.reached_target()
+
+    def get_ends(self, pos: Position) -> list[tuple[EntityType, Team] | None]:
+        if not checkable_position(pos, self.ct):
+            return [None] # None signifies going out of bounds
+
+        end = self.conveyor_ends.get(pos)
+        if end:
+            return end
+        
+        self.conveyor_ends[pos] = [] # To help with looping
+        building_id = self.ct.get_tile_building_id(pos)
+        building_entity = self.ct.get_entity_type(building_id) if building_id else None
+        if building_entity == EntityType.SPLITTER:
+            d = self.ct.get_direction(building_id)
+            pos1 = pos.add(d)
+            pos2 = pos.add(d.rotate_left().rotate_left())
+            pos3 = pos.add(d.rotate_right().rotate_right())
+            self.conveyor_ends[pos] = self.get_ends(pos1) + self.get_ends(pos2) + self.ends(pos3)
+        elif building_entity in CONVEYORS:
+            self.conveyor_ends[pos] = self.get_ends(get_conveyor_target(pos, self.ct))
+        elif building_entity in IGNORED_BUILDINGS or building_entity == EntityType.ROAD:
+            bot_id = self.ct.get_tile_builder_bot_id(pos)
+            if bot_id:
+                self.conveyor_ends[pos] = [(EntityType.BUILDER_BOT, self.ct.get_team(building_id))]
+            else:
+                self.conveyor_ends[pos] = [(EntityType.MARKER, Team.A)]
+        else:
+            self.conveyor_ends[pos] = [(building_entity, self.ct.get_team(building_id))]
+        
+        return self.conveyor_ends[pos]
+"""
+                               -=::.         . .         ..                     .                     ............:::::::.........
+                      -+=-:::-+:                                                                       ...........................
+                    .=-     :.                             .    :.   ..:::::..            ..              ............::..........
+                   .-           ...                                 :==+*#%##+=-.     .                        ...................
+                  .=:                                      .       :--=#@@%@@@%%#+-:.                    .        .........   ..  
+                 .++:          -:--=-::.                           :-#@@@@@@@@@@@@%*=::... :.                        ..           
+                 -#*:..    .+++***+**+=-:--::.                    .-*@@@@@@@@@@@@@@@@@@@%*-. .                                    
+          .      :+#+=-.. .####******++====---::..          ...  .:+@@@@@@@@@@@@@@@@@@@@@@*=:..   .                        .      
+                  .:+*#=.=#%%####****+++==---:::..          ..-+===#@@@@@@@@@@@@@@@@@@@@@@@@%+=..   .                             
+                      .--=*#%####*###*+===--::::..          .:+@@@@@@@@@@@@@@@%@@@@@@@@@@@@@@@@#:.::::. ...                       
+                       .*@@@%%#####*+=-:.:::.......       .-+*%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@*++=+**+-.               .  :.    
+                        +@@@%#**+=-.     .:......:..    .-*#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%%@@@#+-:             .          
+==-::......            .=+-...:+=-...   --    ....:..  :#@@@@@@@@@@@@@@@@@@@@@@@@@@@@%%@@@@@@@@@@@@@@@%%=:..                      
+*#*==++===-:..         .-##+-. +#=:.....:::.. .:::::..:+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%@@@@@@@@@@@@@@@@@*-..                     
+*++#%##%#++=-...      .  -%#=-:%#-....:-:::::-=-:::::.:=#@@@@@@@@@@@@@@@@%%@%%@@@@%%%%@@@@@@@@@@@@@@@%%@@@#=.  ...                
+#%@@@@@@@@@#+-:...       +@%*=*@*-.::::---====--::::::-+@@@@@@@@@%@@@@@%%%#%%%%#%######%%%@@@@%%%%@@@@%%@@@%#***+:...        :.  .
+@@@@@@@@@@@@%*=-:..      +@@##%@*-:::---======--:::::=%@@@@@@@%%%%@@@%%%##*++**++*****###%%%%%%%%###%%%%%@@@@@@#=:.  .        ....
+@@@@@@@@@@@@@%+=-:..     :@@%%%@*-::::--===+=--:.::.-#@@@@@@%@%%%%%####***+=-===+++**##%%%%%@%%%#########%%%@@@@@+-.        .....:
+@@@@@@@@@@@@@@*=-:...     :%@@%@#=::...:-===--::::::-+@@@@@%@%##%%%%###**+-:----==++*###%%%%%%%%%######%#####@@@@#-.         ...::
+@@@@@@@@@@@@@@@%*-:....    .+@%%%+-::....===-::....::+@@@@@@%#%%#%%######+-:::--====+*#%%%%###%%%%###*##%####%%@@%-.         ....:
+@@@@@@@@@@@@@@@@+--:...      +%%%*-.  ..:----::..:---*@@@@@@%%%#%@%%##%##*-::::=-==+***###%#%#%%%%######%#%##%%%@@+.   .      ....
+@@@@@@@@@@@@@@@@@#+=-:....   .@%#+:.    .::::::.::+=+*@@@@@%%%%%@@%%###***=-::-====+++*###%#%##%###########%##%%@@@*:...  .      .
+@@@@@@@@@@@@@@@*+++++*=:... . *@+:.         .:....-#@@@@@@%%%@%@%%%###+#%+=::::----==+=+*%%%%%%%##%%###%%#**#%%#%@@@@%+=-:.       
+%@@@@@@@@@@@@###=-==--++:.... =#-::-=:      ....:--+#%@@@%@%##%%##%#**+%#+=-::-:::....:-=+##%#=-:-=+**#%%%####%%#%%@%#####*-      
+#%@@@@@@@@@@@*+##-===--#*:.....*+=++-::...::....:==+%@@@@@%%####%####+*##*=-:::::-:-::...:+##+-...:-+*#%%%%%%##%%#%@@+:...-=:     
+**%##%@@@@@@@@##%**==--=++:.....+%%#*=-:::......:+%@@@@@@@@%%%#*###*+#****=::....:=::=-::.=**-..:.-.=*%%####%%##%##@@%=.. .-:     
++*%**#%@@@@%##%#*=+%#%+=+---.....=@#=...:....   :*@@@@%####%@%###**+=##*##=-:.:::-. .--:..=#+:..:=-++*%%%#**#####%%%@@=.   .:     
+###*+#%@@@@@@%%*****+**#%*+++-.  .+%%%#+-:..    .+%@@##%%@@@%%###*=--+*+*#=:::-==:.::-=--:=%#+--+-:=##*###***#*###%%@%=..         
++*+=%%@@@@##@###*++*+==+**=::=..  .+%#*-...       :*##%*####%%%##+-:::==*#+:..----::::--::=#%#+==+++**+***+*##***#%%@@-.          
+=+*+#@@@@@@@@##%*=+#%@++#==+---.   ..:-:.           .=*++==*%%###*=++-.-*@%+-:-===-=+==-..:+%#%#****+=+**++*#######%@@@*=-.       
+=+*##@@@@@@@@#**#+==+*++#=--::...:=.      .:.        .-=:::-+*******-::*@@@#+=--=+++++-...-*%##*##**++===+**##%##%%##*+-.         
+-*#+#@@@@@@@@#+*##=++-=*=--::.:+#+-.   :+*-      .   :=+*++=-==++==**===#@@%#=+=+**++-. .--*%%%*+*##+-=-:+*#%%%@%%%#+-:.          
+#+***%@@@@@@@%##*%+*=-++---:-#%%=     =*-.   .. ..  #@%#****++++-:::=#**+@@@#*==+**=::*==+-=####*==*#*::-+****#%#**+:....         
+---*%#@@@@@@@@%#*%*#+=%===+%@@@@*.   --  .. ...... *@@%#****+++==:.:::#*+#@@%=-=+=::. . .=-.-==+==--+##-..:==:====-:..            
+:-+#++@@@@@@@@%#+*%###-+###@@@@=    ..............-@@@%####*+====----*:-*+%@+::====:::.    ...:+****++**:.... ........:      .... 
+--+#*+%@@@@@@@%#%@#=*%*#%@@@@@+     ...::...:....:#@@@##**###+=-=-:.-=:.  *#:.-=++=---:... .:-++**#%%%##=.      .   .. ......::::.
+-==+%++#@@@@@@@@%#*#%%%%%%%%@@-.-++=---:..:::....:%@@%#**####=+=--=#%-=:..*+.:-====-===---===+*+*+*#%#%%=..  .  ..........:::-::::
+-+#**#+*@%@@@@@@@#%%@@@@@%@@@##+. ..:-:..:::.. ..-@#@@####%%#-===+@%*-.   =+.:-:-:::-::=::+====-+*+*#%%%=... .  .......::::::-::::
+*#++##%@@%@@@@@@@@@@@@@@@@@@%+:+*::=+-:::::...  .+%#@@#%##%%*=-=#@#*+=.   .-....... .  . .. :...-===+=*+:.    ......::::----------
+==+*=+**@@@@@@@@@@@@@@@@@@@@+-..-*@*#=:-:::..   :#+#@%#%*#@%+==%%**+++=:.                  .....:::===-..     .....::------=====--
+==*+=*#*@@@@@@@@@@@@@@@@@@@#-:.:==%=+#=-:...    :#+@%*#%#%@#+#@@#*+++++=:               ...:-=+++**=:.   .   ....::---===++++++==-
+-**==#+#%#@@@@@@@@@@@@@@@@@===:==--#==%-...     .+%%+*%%#@%#@@@%#++++++++:           ..-=++*+++*-..   ..  .....:::---==++******+=-
+=*++*=-+@%@@@@@@@@@@@@@@@@*=--+==+#==-:=- .      =@**#%%@%%@@@@%#+++++++++-             .:.:-+-.....     .....::---==++*######*+--
+#=+#*=-=#@@@@@@@@@@@@@@@@@%*+++--*+::.  .:       =%#*#%%@%%@@@@%#==++++++++-               .:::.... .   .....::--===+*#%%%%%%#*+--
+=-=+++=+#@@@@@@@@@@@@@@@@@@%*+=+#=:...           .##*%%@%#@@@@@#*-=+++++++++:.....     .:.  .:-==:      ....:::--=+*#%%%@@@@@%#=-:
+::--#=++%@@@@@@@@@@@@@@@@@@@#*%+-:...             -%*%%@#%@@@@%+-::=++++++++**++==+-  .    +**+...    ......::---=+###%@@@@@@#=-:.
+-:::+==+%@%+#@@@@@@@@@@@@@@@@*--:..                *#%%@#@@@@%*+---::-==++++**+***+**-    =**##:.     ..::.::---=+*##%%%@@@%+=:.. 
+-+-::++#*@@#=*@@@@@@@@@@@@@@#=-:..                  -@%@%@@@@%*=-----:---++++++++****#*:  :*##%+.     :-+=::----=+***#*##*+=-.... 
+..=-:==#++%%*=+@@@@@@@@@@@@@#+:...                  :%@%%@@@@%*+=---==--::-=+++**+*##*##-  *##%*.   ..::+:::--++=+++++==-=-:....  
+....:-*##++#%*=+%@@@@@@@@@@@*+-..                   :#%%#@@@@@%##=--=+==--::-=++*#-*%###%* :#%%*... .-:+:::--=-+--=+====--:::.... 
+......+*#%*=#*+===%@@@@@@@@%++-:                   -@@@%%@@%%@@%#*---==+==-:.:-+**:-#%##*#%=.*##. .-----=--=--+*=----:::::....    
+     ..:#%#+--+++===+*******+=-:.            =#*=::@@%#+*@@*=%@@#%+--==+++==:.:=+*.:*%#**#%@#=*#:.:::::::=*===-+-:---::::....     
+        .+#*++***+==========++=-:   ..   .-*%%##%****##+=@@#==@@%%%+-====+++=-.:+*::=##**#@@@*-#*:..-+-:::=+=-==::==-:.::.:..   ..
+          :**###**+==+*+++++++--:=-%%#%%**+++**#%%*+++++=#@%+=#@@%@%+--===++++-.=*::-++**####*-.:+=-:-+*=::+*:.::+-+::..       .  
+             :=+**+=+++****+++=-=**++**++**#***#%%%*===+++%@@++@@%@@#--===+***#--=::=+*++==+*#%@#--*-::+***=:::=--+=..::.  :--::: 
+                .-***+++****+++=*##*===+==+++++*%%*#+--=*+*%@@##@@@@@+-===++==++-:-++======+*#%@@@+:*+===-.:::=--=+::.:-:.:==*#+*.
+                    .=##***+++++****+=++=-==++++++##*=--+*#+%%%@%@@@@#====-=====--=----==++++*###%%=-=. .-*+=-:-=*=. .:-=+==+==*- 
+                       .-+*+++*%**+*++++-=++=--=*###+=--+*+=-@%#@@@@@@*===-::::-+=:----+*=-==+#%%%##%%#%#*+...:-==+*--==:-++=+#:  
+                        .==*#%******+++=====+++*###+==--=+=:.#@#+%@@@@%+==========+===+++++++====+=--==++=-: .:::----::-==-=*+    
+                         ---+**+*#*+**+==++******+==++=-==-:.:@@#+%@@@@#========--:--=-:======-:==-::-------- .::-:::-=+==*-.     
+                          ::......-*##*+==+**++***==++=--:.  :@@@#*@@@@%*=------------:.:==+=:::-++-.::-----=-.:----=++**:        
+                          .....        .:-+*+=+++==--::..    .%@@@%#@@@#%#=----------::..-=+=-..:=+=..::-==--++-                  
+                          .=:..                               +@@%@%@@@*+#%*=--------:...:-====:::=+=::--==+=+*=                  
+                          . ....                              .*@@#**%@%*=-*%#=----:::::::::--====-::=+*++-.                      
+                          :  ...                                +@@%*++++**##%@%*=--:::::::------=++-.+=                          
+                          .   ..                                 -@@@@*+=-----:::=*##*++++++++******:--                           
+                              ..                                  @@@%##*=---:::::::::----=+++++++**=-:                           
+                              .::.                               .@@@*+++--:::::::::::::----===+====-.                            
+                               :.....                             +%#+===-::::::::::::::::::--::::::..                            
+                               .....                               =+=---::........:::::::::.........                             
+                               ..                                    -::.....................                                     
+"""

@@ -168,7 +168,7 @@ def get_conveyor_target(pos: Position, ct: Controller):
     building_entity = get_entity(pos, ct)
     position = None
     match building_entity:
-        case EntityType.CONVEYOR | EntityType.SPLITTER:
+        case EntityType.CONVEYOR | EntityType.ARMOURED_CONVEYOR | EntityType.SPLITTER:
             d = ct.get_direction(building_id)
             position = pos.add(d)
         case EntityType.BRIDGE:
@@ -248,3 +248,22 @@ def is_bot_nearby(pos: Position, ct: Controller):
         if b_id == self_id: continue
         if b_id and ct.get_team(b_id) == ct.get_team():
             return True
+        
+def is_valid_target(pos: Position, ct: Controller):
+    position = ct.get_position()
+    building_id = ct.get_tile_building_id(pos)
+    building_entity = ct.get_entity_type(building_id) if building_id else None
+    if building_entity in CONVEYORS and ct.get_team(building_id) != ct.get_team():
+        return True
+    
+    elif building_id is None or is_team_road(pos, ct):
+        for d in BRIDGE_DELTAS:
+            check_pos = Position(position.x + d[0], position.y + d[1])
+            if not checkable_position(check_pos, ct):
+                continue
+            if get_conveyor_target(check_pos, ct) == position:
+                return True
+            if d in CARDINAL_DELTAS and get_entity(check_pos, ct) == EntityType.HARVESTER:
+                return True
+
+    return False

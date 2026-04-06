@@ -97,7 +97,7 @@ class AStarPathfinder:
 
         while open_set:
             c = heapq.heappop(open_set)
-
+            print(f"Now thinking about position {c}")
             ci = self.idx(c[1], c[2])
             if closed_set[ci]:
                 continue

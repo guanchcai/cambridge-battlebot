@@ -84,6 +84,8 @@ class Bot(EBase):
             
             if building_entity == EntityType.CORE and not same_team:
                 env = Environment.WALL
+                if not self.enemy_base_pos:
+                    self.enemy_base_pos = self.ct.get_position(building_id)
 
             if bot_id and self.current_state != BotState.GOING_BACK:
                 env = Environment.WALL
@@ -92,7 +94,7 @@ class Bot(EBase):
 
             self.update_tile(tile, building_id, bot_id)
             
-            if self.get_from_pos(self.internal_map, tile) != Environment.EMPTY and self.distance_map and tile in self.distance_map and tile != self.current_target_position:
+            if self.get_from_pos(self.internal_map, tile) == Environment.WALL and self.distance_map and tile in self.distance_map and tile != self.current_target_position:
                 print(f"Encountered wall in path on position: {tile}")
                 self.distance_map = None
 
@@ -108,6 +110,9 @@ class Bot(EBase):
 
 
     def move_to_pos(self, direction_allowed=DIRECTIONS):
+        if self.current_target_position is None:
+            print("Interesting")
+            return
         dist_to_target = self.position.distance_squared(self.current_target_position)
         if dist_to_target <= self.target_distance_squared:
             self.reached_target()
@@ -132,11 +137,11 @@ class Bot(EBase):
         move_pos = self.distance_map[0]
         if self.position.distance_squared(move_pos) > 2:
             # We have been thrown or something went wrong
-            self.distance_map = None 
+            self.distance_map = None
             return
         
         build_success = self.build_road(move_pos, self.distance_map[1] if len(self.distance_map) > 1 else None)
-        chosen = self.ct.get_position().direction_to(move_pos)
+        chosen = self.position.direction_to(move_pos)
         if self.ct.can_move(chosen) and build_success:
             self.ct.move(chosen)
             
@@ -268,10 +273,10 @@ class Bot(EBase):
             check_pos = self.position.add(d)
             if not checkable_position(check_pos, self.ct):
                 continue
-            if self.ct.is_tile_passable(check_pos):
+            if self.get_from_pos(self.internal_map, check_pos) != Environment.WALL:
                 if self.ct.can_move(d):
                     self.ct.move(d)
-                return
+                    return
             if self.ct.is_tile_empty(check_pos):
                 candidate = check_pos
         
@@ -280,4 +285,6 @@ class Bot(EBase):
                 self.ct.build_road(candidate)
             if self.ct.can_move(d):
                 self.ct.move(d)
-            
+    
+    def handle_thrown(self):
+        pass

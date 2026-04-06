@@ -7,6 +7,17 @@ CARDINAL_DIRECTIONS = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Directi
 DIAGONAL_DIRECTIONS = {Direction.NORTHEAST, Direction.NORTHWEST, Direction.SOUTHEAST, Direction.SOUTHWEST}
 PASSABLE = {None, EntityType.BRIDGE, EntityType.CONVEYOR, EntityType.ROAD, EntityType.ARMOURED_CONVEYOR, EntityType.BUILDER_BOT, EntityType.CORE, EntityType.MARKER, EntityType.SPLITTER}
 VALUABLE_ENEMY_ENTITIES = {EntityType.CONVEYOR, EntityType.ARMOURED_CONVEYOR, EntityType.SPLITTER, EntityType.BRIDGE, EntityType.FOUNDRY, EntityType.BUILDER_BOT, EntityType.CORE, EntityType.GUNNER, EntityType.SENTINEL}
+VALUABLE_ENEMY_ENTITIES_ORDERED = [
+    EntityType.CONVEYOR,
+    EntityType.ARMOURED_CONVEYOR,
+    EntityType.SPLITTER,
+    EntityType.BRIDGE,
+    EntityType.FOUNDRY,
+    EntityType.BUILDER_BOT,
+    EntityType.CORE,
+    EntityType.GUNNER,
+    EntityType.SENTINEL,
+]
 ORE_SITES = {Environment.ORE_TITANIUM, Environment.ORE_AXIONITE}
 CONVEYORS = {EntityType.BRIDGE, EntityType.CONVEYOR, EntityType.ARMOURED_CONVEYOR, EntityType.SPLITTER}
 CONVEYORS_WITHOUT_SPLITTER = {EntityType.CONVEYOR, EntityType.BRIDGE, EntityType.ARMOURED_CONVEYOR}
@@ -49,4 +60,4 @@ class TargetTypes(Enum):
     BASE = 1
     ORE = 2
 
-TURRET_THREAT_RADIUS = 9
+TURRET_THREAT_RADIUS = 2
