@@ -175,15 +175,28 @@ class Aggressor(Bot):
 
     def evaluate_aggressor_target(self, tile: Position, building_id, bot_id, entity_type):
         def evaluate_harvesters():
+            score = 0
             for d in DIRECTIONS:
                 check_pos = tile.add(d)
                 if not checkable_position(check_pos, self.ct):
                     continue
                 b_entity = get_entity(check_pos, self.ct)
                 if b_entity in IGNORED_BUILDINGS or is_team_road(check_pos, self.ct):
-                    self.aggression_targets.append((100, tile))
+                    score = max(score, 100)
                 elif b_entity in PASSABLE and b_entity != EntityType.CORE:
-                    self.aggression_targets.append((50, tile))
+                    score = max(score, 50)
+            if score > 0:
+                self.aggression_targets.append((score, tile))
+        # def evaluate_harvesters():
+        #     for d in DIRECTIONS:
+        #         check_pos = tile.add(d)
+        #         if not checkable_position(check_pos, self.ct):
+        #             continue
+        #         b_entity = get_entity(check_pos, self.ct)
+        #         if b_entity in IGNORED_BUILDINGS or is_team_road(check_pos, self.ct):
+        #             self.aggression_targets.append((100, tile))
+        #         elif b_entity in PASSABLE and b_entity != EntityType.CORE:
+        #             self.aggression_targets.append((50, tile))
 
             """
                 50: harvesters next to a passable (conveyors for example) this can be toned back down
