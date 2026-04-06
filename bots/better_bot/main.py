@@ -7,7 +7,9 @@ from entity_behaviour.launcher import Launcher
 from entity_behaviour.blocker_bot import Blocker
 from entity_behaviour.base_builder_bot import BaseBuilder
 from entity_behaviour.repair_bot import Repairer
+from entity_behaviour.aggressor_bot import Aggressor
 from utils.helper_functions import get_entity
+from entity_behaviour.sentinel import Sentinel
 
 class Player:
     def __init__(self):
@@ -29,8 +31,16 @@ class Player:
             case EntityType.CORE:
                 return Core(ct)
             case EntityType.BUILDER_BOT:
-                if ct.get_position() == base_position:
+                p = ct.get_position()
+                if p == base_position:
                     return BaseBuilder(ct)
-                return Gatherer(ct) if ct.get_current_round() == 1 else Repairer(ct)
+                c_r = ct.get_current_round()
+                if c_r == 1:
+                    return Gatherer(ct)
+                if p.x > base_position.x:
+                    return Repairer(ct)
+                return Aggressor(ct)
             case EntityType.LAUNCHER:
                 return Launcher(ct)
+            case EntityType.SENTINEL:
+                return Sentinel(ct)

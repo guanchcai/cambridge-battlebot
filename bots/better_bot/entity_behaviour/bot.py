@@ -32,7 +32,9 @@ class Bot(EBase):
         self.unexplored = set()
         self.buckets = {}
         self.bucket_size = 16
-        
+
+        self.position = ct.get_position()
+
         for x in range(self.map_width):
             for y in range(self.map_height):
                 p = Position(x, y)
@@ -44,22 +46,21 @@ class Bot(EBase):
 
     def run_tick(self, ct: Controller):
         self.ct = ct
+        self.position = ct.get_position()
         self.update_map()
         if self.current_target_position:
             ct.draw_indicator_line(ct.get_position(), self.current_target_position, 255, 0, 0)
         
         self.move_to_pos()
 
-        position = ct.get_position()
-
         for d in DIRECTIONS:
-            pos = position.add(d)
+            pos = self.position.add(d)
             if ct.can_place_marker(pos):
                 ct.place_marker(pos, encode_coordinate(self.base_position))
                 break
         
-        if ct.can_heal(position):
-            ct.heal(position)
+        if ct.can_heal(self.position):
+            ct.heal(self.position)
 
 
     def update_map(self):
@@ -107,9 +108,7 @@ class Bot(EBase):
 
 
     def move_to_pos(self, direction_allowed=DIRECTIONS):
-        position = self.ct.get_position()
-
-        dist_to_target = position.distance_squared(self.current_target_position)
+        dist_to_target = self.position.distance_squared(self.current_target_position)
         if dist_to_target <= self.target_distance_squared:
             self.reached_target()
         
@@ -119,9 +118,11 @@ class Bot(EBase):
 
         if not self.distance_map:
             print("Can't reach target from here")
+            if self.current_state == BotState.GOING_TO_TARGET:
+                self.unreachable_path()
             return
         
-        if position == self.distance_map[0]:
+        if self.position == self.distance_map[0]:
             self.distance_map.popleft()
             
         if not self.distance_map:
@@ -129,21 +130,34 @@ class Bot(EBase):
             return
 
         move_pos = self.distance_map[0]
+        if self.position.distance_squared(move_pos) > 2:
+            # We have been thrown or something went wrong
+            self.distance_map = None 
+            return
+        
         build_success = self.build_road(move_pos, self.distance_map[1] if len(self.distance_map) > 1 else None)
         chosen = self.ct.get_position().direction_to(move_pos)
         if self.ct.can_move(chosen) and build_success:
             self.ct.move(chosen)
             
-        if self.ct.get_current_round() < 50 and self.ct.can_destroy(position) and is_team_road(position, self.ct):
-            self.ct.destroy(position)
+        if self.ct.get_current_round() < 50 and self.ct.can_destroy(self.position) and is_team_road(self.position, self.ct):
+            self.ct.destroy(self.position)
 
-        self.previous_position = position if position != self.ct.get_position() else self.previous_position
+        new_pos = self.ct.get_position() 
+        if new_pos.distance_squared(self.current_target_position) <= self.target_distance_squared:
+            print("Reached position after moving")
+            self.reached_target()
+
+        self.previous_position = self.position if self.position != new_pos else self.previous_position
 
     def build_road(self, move_pos: Position, next_pos: Position):
         if self.ct.can_build_road(move_pos):
             self.ct.build_road(move_pos)
         
         return True
+    
+    def unreachable_path(self):
+        return
 
     def set_from_pos(self, target_list: list, pos: Position, value):
         target_list[pos.y * self.map_width + pos.x] = value
@@ -169,10 +183,8 @@ class Bot(EBase):
     def nearest_unexplored(self) -> Position | None:
         if not self.buckets:
             return Position(random.randint(0, self.map_width - 1), random.randint(0, self.map_height - 1))
-        
-        pos = self.ct.get_position()
 
-        bx, by = pos.x // self.bucket_size, pos.y // self.bucket_size
+        bx, by = self.position.x // self.bucket_size, self.position.y // self.bucket_size
 
         # Find the closest bucket by Chebyshev distance, break ties randomly
         best_bucket = min(
@@ -182,7 +194,7 @@ class Bot(EBase):
 
         return min_with_random_tiebreak(
             self.buckets[best_bucket],
-            key=lambda c: pos.distance_squared(c)
+            key=lambda c: self.position.distance_squared(c)
         )
     
     def update_tile(self, tile: Position, building_id: int | None, bot_id: int | None):
@@ -249,3 +261,23 @@ class Bot(EBase):
 
     def set_wandering(self):
         self.set_target(self.base_position, 16, BotState.WANDERING)
+
+    def move_to_adjacent(self, directions_allowed=DIRECTIONS):
+        candidate = []
+        for d in directions_allowed:
+            check_pos = self.position.add(d)
+            if not checkable_position(check_pos, self.ct):
+                continue
+            if self.ct.is_tile_passable(check_pos):
+                if self.ct.can_move(d):
+                    self.ct.move(d)
+                return
+            if self.ct.is_tile_empty(check_pos):
+                candidate = check_pos
+        
+        if candidate:
+            if self.ct.can_build_road(candidate):
+                self.ct.build_road(candidate)
+            if self.ct.can_move(d):
+                self.ct.move(d)
+            

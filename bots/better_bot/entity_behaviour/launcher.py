@@ -41,12 +41,8 @@ class Launcher(EBase):
                 self.enemy_targets.append((1, entity_pos, entity_type))
 
             elif entity_type in CONVEYORS:
-                if same_team:
-                    if self.ct.get_hp(entity_id) != self.ct.get_max_hp(entity_id):
-                        self.aggression_targets.append((50, entity_pos, entity_type))
-                    else:
-                        if self.ct.is_tile_passable(entity_pos):
-                            self.evaluate_aggressor_target(entity_pos, entity_id, None, entity_type)
+                if not same_team:
+                    self.evaluate_aggressor_target(entity_pos, entity_id, None, entity_type)
             
             elif entity_type == EntityType.HARVESTER:
                 self.evaluate_aggressor_target(entity_pos, entity_id, None, entity_type)
@@ -60,6 +56,7 @@ class Launcher(EBase):
                 return False
             enemy_pos = self.ct.get_position(random.choice(enemy_bots))
             self.enemy_targets.sort(key=lambda item: item[0] * 1000 + self.ct.get_position().distance_squared(item[1]), reverse=True)
+            print(self.enemy_targets)
             for target in self.enemy_targets:
                 if self.ct.can_launch(enemy_pos, target[1]):
                     self.ct.launch(enemy_pos, target[1])
@@ -67,6 +64,7 @@ class Launcher(EBase):
             return False
         
         def launch_allied_bots():
+            print(self.aggression_targets)
             if not self.aggression_targets:
                 return False
             ally_pos = self.ct.get_position(random.choice(allied_bots))
@@ -98,10 +96,10 @@ class Launcher(EBase):
                     continue
                 b_entity = get_entity(check_pos, self.ct)
                 b_id = self.ct.get_tile_building_id(check_pos)
-                if b_entity in IGNORED_BUILDINGS or (b_entity == EntityType.ROAD and self.ct.get_team(b_id) == self.team):
-                    self.aggression_targets.append((100, tile, entity_type))
+                if b_entity in IGNORED_BUILDINGS or is_team_road(check_pos, self.ct):
+                    self.aggression_targets.append((100, check_pos))
                 elif b_entity in PASSABLE and b_entity != EntityType.CORE:
-                    self.aggression_targets.append((50, tile, entity_type))
+                    self.aggression_targets.append((50, check_pos))
 
             """
                 50: harvesters next to a passable (conveyors for example) this can be toned back down
@@ -140,7 +138,7 @@ class Launcher(EBase):
                 20: refined axiomnite connecting to nothing
             """
             
-            self.aggression_targets.append((eval, target_tile, entity_type))
+            self.aggression_targets.append((eval, target_tile))
         
         if bot_id or not building_id or self.ct.get_team(building_id) == self.team:
             return # Do not target ones that have a bot on them

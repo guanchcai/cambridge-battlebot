@@ -51,13 +51,14 @@ class Repairer(Bot):
         if etype in CONVEYORS and same_team:
             damaged = self.ct.get_hp(building_id) != self.ct.get_max_hp(building_id)
             if damaged:
-                self.repair_targets.append((tile, 0))
-            elif is_directly_connected_to_turret(tile, other_team(self.team), self.ct):
                 self.repair_targets.append((tile, 2))
-            elif etype != EntityType.SPLITTER and conveyor_target and checkable_position(conveyor_target, self.ct) and get_entity(conveyor_target, self.ct) in IGNORED_BUILDINGS:
-                self.repair_targets.append((tile, 0))
-            # elif is_exposed(tile, self.ct):
-            #     self.repair_targets.append((tile, 0))
+            elif not is_bot_nearby(tile, self.ct):
+                if is_directly_connected_to_turret(tile, other_team(self.team), self.ct):
+                    self.repair_targets.append((tile, 0))
+                elif etype != EntityType.SPLITTER and conveyor_target and checkable_position(conveyor_target, self.ct) and get_entity(conveyor_target, self.ct) in IGNORED_BUILDINGS:
+                    self.repair_targets.append((tile, 0))
+                # elif is_exposed(tile, self.ct):
+                #     self.repair_targets.append((tile, 0))
             if tile not in self.visited_conveyors:
                 self.visiting_queue.add(tile)
 
@@ -82,7 +83,14 @@ class Repairer(Bot):
             self.set_wandering()
         elif self.current_state == BotState.GOING_TO_TARGET:
             conveyor_target = get_conveyor_target(self.current_target_position, self.ct)
-            if is_directly_connected_to_turret(self.current_target_position, other_team(self.team), self.ct):
+            building_id = self.ct.get_tile_building_id(self.current_target_position)
+            etype = self.ct.get_entity_type(building_id) if building_id else None
+            
+            if etype in CONVEYORS:
+                damaged = self.ct.get_hp(building_id) != self.ct.get_max_hp(building_id)
+                if not damaged:
+                    self.set_wandering()
+            elif is_directly_connected_to_turret(self.current_target_position, other_team(self.team), self.ct):
                 if self.ct.can_destroy(self.current_target_position):
                     self.ct.destroy(self.current_target_position)
                 
@@ -95,7 +103,6 @@ class Repairer(Bot):
                     
     
     def set_wandering(self):
-        print(self.visiting_queue)
         next_conveyor = self.nearest_unexplored()
         if next_conveyor:
             self.set_target(next_conveyor, 4, BotState.WANDERING)
@@ -112,5 +119,5 @@ class Repairer(Bot):
             True, 
             DeltaTypes.ALL, 
             self.target_distance_squared, 
-            self.current_state == BotState.GOING_TO_TARGET
+            self.target_distance_squared == 0
         )

@@ -181,7 +181,7 @@ def get_conveyor_target(pos: Position, ct: Controller):
 def limit_to_map(pos: Position, ct: Controller):
     def clamp_between(a, b, x):
         return max(min(b, x), a)
-    return Position(clamp_between(0, ct.get_map_width() - 1, pos.x), clamp_between(0, ct.get_map_height() - 1), pos.y)
+    return Position(clamp_between(0, ct.get_map_width() - 1, pos.x), clamp_between(0, ct.get_map_height() - 1, pos.y))
 
 def get_connections(pos: Position, team: Team, ct: Controller, seen: list[int]=[]) -> set[EntityType]:
     if not checkable_position(pos): return set(EntityType.MARKER) # Could be connected
@@ -227,7 +227,7 @@ def is_connected_to_turret(pos: Position, team: Team, ct: Controller) -> bool:
 
 def is_directly_connected_to_turret(pos:Position, team: Team, ct: Controller) -> bool:
     c_target = get_conveyor_target(pos, ct)
-    if not checkable_position(c_target, ct):
+    if not c_target or not checkable_position(c_target, ct):
         return False
     turret_id = ct.get_tile_building_id(c_target)
     if turret_id:
@@ -236,3 +236,15 @@ def is_directly_connected_to_turret(pos:Position, team: Team, ct: Controller) ->
             return True
 
     return False 
+
+def is_bot_nearby(pos: Position, ct: Controller):
+    self_id = ct.get_id()
+    for d in ALL_DIRECTIONS:
+        check_pos = pos.add(d)
+        if not checkable_position(check_pos, ct):
+            continue
+
+        b_id = ct.get_tile_builder_bot_id(check_pos)
+        if b_id == self_id: continue
+        if b_id and ct.get_team(b_id) == ct.get_team():
+            return True

@@ -26,7 +26,7 @@ class BaseBuilder(Bot):
             if self.ct.get_global_resources()[0] >= FOUNDARY_THRESHHOLD or self.ct.get_global_resources()[1] > 0:
                 if entitytype != EntityType.FOUNDRY:
                     self.potential_targets.append(tile)
-            elif entitytype == EntityType.ROAD or entitytype in IGNORED_BUILDINGS:
+            elif is_team_road(tile, self.ct) or entitytype in IGNORED_BUILDINGS:
                 self.potential_targets.append(tile)
         
         elif max(del_x, del_y) == 2 and env == Environment.EMPTY:
@@ -54,7 +54,7 @@ class BaseBuilder(Bot):
     def reached_target(self):
         del_x = abs(self.current_target_position.x - self.base_position.x)
         del_y = abs(self.current_target_position.y - self.base_position.y)
-        if self.ct.can_destroy(self.current_target_position) and get_entity(self.current_target_position, self.ct) == EntityType.ROAD:
+        if self.ct.can_destroy(self.current_target_position) and is_team_road(self.current_target_position, self.ct):
             self.ct.destroy(self.current_target_position)
         if del_x == del_y and del_x == 2:
             if self.ct.can_build_barrier(self.current_target_position):

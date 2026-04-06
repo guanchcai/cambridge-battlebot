@@ -46,8 +46,6 @@ class Gatherer(Bot):
 
     def build_road(self, move_pos: Position, next_pos: Position) -> bool:
         print(f"Trying to build road at {move_pos}")
-        
-        position = self.ct.get_position()
 
         if checkable_position(self.current_target_position, self.ct):
             if destroyable(self.current_target_position, self.ct):
@@ -59,11 +57,11 @@ class Gatherer(Bot):
             return super().build_road(move_pos, next_pos)
 
         # This runs 4 extra checks each tick idk if its good or not
-        if self.build_harvester(position):
+        if self.build_harvester(self.position):
             print("Need harvesters")
             return False
         
-        if self.build_bot_thrower(position, move_pos):
+        if self.build_bot_thrower(self.position, move_pos):
             print("Need launchers")
             return False
         
@@ -76,21 +74,21 @@ class Gatherer(Bot):
         if self.current_state == BotState.GOING_TO_TARGET:
             return super().build_road(move_pos, next_pos)
 
-        current_tile_id = self.ct.get_tile_building_id(position)
+        current_tile_id = self.ct.get_tile_building_id(self.position)
         same_team = current_tile_id and self.ct.get_team(current_tile_id) == self.ct.get_team()
-        if self.ct.can_fire(position) and not same_team:
-            self.ct.fire(position)
+        if self.ct.can_fire(self.position) and not same_team:
+            self.ct.fire(self.position)
         
-        if self.ct.can_destroy(position) and is_team_road(position, self.ct):
-            self.ct.destroy(position)
+        if self.ct.can_destroy(self.position) and is_team_road(self.position, self.ct):
+            self.ct.destroy(self.position)
             
-        current_tile_entity = get_entity(position, self.ct)
+        current_tile_entity = get_entity(self.position, self.ct)
         
         if current_tile_id and not same_team:
             return False
 
-        if current_tile_entity is None and self.ct.get_tile_env(position) not in ORE_SITES:
-            self.build_conveyor_chain(position, move_pos)
+        if current_tile_entity is None and self.ct.get_tile_env(self.position) not in ORE_SITES:
+            self.build_conveyor_chain(self.position, move_pos)
             return False
         elif next_pos:
             self.build_conveyor_chain(move_pos, next_pos)
@@ -101,7 +99,7 @@ class Gatherer(Bot):
         match self.current_state:
             case BotState.GOING_BACK:
                 self.distance_map = self.path_finder.run(
-                    self.ct.get_position(),
+                    self.position,
                     self.current_target_position,
                     False, 
                     DeltaTypes.BRIDGE, 
@@ -110,7 +108,7 @@ class Gatherer(Bot):
                 )
             case BotState.WANDERING:
                 self.distance_map = self.path_finder.run(
-                    self.ct.get_position(),
+                    self.position,
                     self.current_target_position,
                     True, 
                     DeltaTypes.ALL, 
@@ -119,7 +117,7 @@ class Gatherer(Bot):
                 )
             case BotState.GOING_TO_TARGET:
                 self.distance_map = self.path_finder.run(
-                    self.ct.get_position(),
+                    self.position,
                     self.current_target_position,
                     True, 
                     DeltaTypes.ALL, 
@@ -130,35 +128,36 @@ class Gatherer(Bot):
     def reached_target(self):
         if self.current_state == BotState.WANDERING:
             return super().reached_target()
-
-        position = self.ct.get_position()
-        env = self.ct.get_tile_env(position)
+        self.position = self.ct.get_position()
+        env = self.ct.get_tile_env(self.position)
         
-        building_id = self.ct.get_tile_building_id(position)
+        building_id = self.ct.get_tile_building_id(self.position)
         same_team = building_id and self.ct.get_team(building_id) == self.ct.get_team()
 
         if building_id and not same_team:
-            if self.ct.can_fire(position):
-                self.ct.fire(position)
+            if self.ct.can_fire(self.position):
+                self.ct.fire(self.position)
 
         reached_ore = self.current_state == BotState.GOING_TO_TARGET and env in ORE_SITES
         can_build = self.ct.get_global_resources()[0] >= self.ct.get_harvester_cost()[0]
         print(self.ct.get_cpu_time_elapsed())
         if reached_ore and self.dont_build_wall is None:
             path_back = self.path_finder.run(
-                    position,
+                    self.position,
                     self.base_position,
                     False, 
                     DeltaTypes.BRIDGE, 
                     0, 
                     True
                 )
+            if not path_back:
+                return
             if len(path_back) > 1:
                 self.dont_build_wall = path_back[0].direction_to(path_back[1])
         print(self.ct.get_cpu_time_elapsed())
         if reached_ore:
             for d in CARDINAL_DIRECTIONS:
-                check_pos = position.add(d)
+                check_pos = self.position.add(d)
                 if not checkable_position(check_pos, self.ct) or d == self.dont_build_wall:
                     continue
                 building_entity = get_entity(check_pos, self.ct)
@@ -173,10 +172,10 @@ class Gatherer(Bot):
             self.set_target(self.base_position, BASE_DIST, BotState.GOING_BACK, TargetTypes.BASE)
             
         elif self.current_state == BotState.GOING_TO_TARGET and env == Environment.EMPTY:
-            if position.distance_squared(self.base_position) <= BASE_DIST:
-                if is_exposed(position, self.ct) and get_entity(position, self.ct) == EntityType.BRIDGE: # Duplicate code fix later
+            if self.position.distance_squared(self.base_position) <= BASE_DIST:
+                if is_exposed(self.position, self.ct) and get_entity(self.position, self.ct) == EntityType.BRIDGE: # Duplicate code fix later
                     for d in CARDINAL_DIRECTIONS:
-                        check_pos = position.add(d)
+                        check_pos = self.position.add(d)
                         if not checkable_position(check_pos, self.ct) or \
                             self.ct.get_tile_env(check_pos) != Environment.EMPTY or \
                             get_entity(check_pos, self.ct) not in IGNORED_BUILDINGS:
@@ -188,17 +187,17 @@ class Gatherer(Bot):
                             self.launchers_built += 1
                             break
 
-                if self.ct.can_destroy(position) and is_team_road(position, self.ct):
-                    self.ct.destroy(position)
+                if self.ct.can_destroy(self.position) and is_team_road(self.position, self.ct):
+                    self.ct.destroy(self.position)
 
-                building_entity = get_entity(position, self.ct)
+                building_entity = get_entity(self.position, self.ct)
                 if building_entity in IGNORED_BUILDINGS:
-                    bridge_target_pos_choices = get_positions_of_entities(position, self.ct, 9, EntityType.SPLITTER, self.ct.get_team())
+                    bridge_target_pos_choices = get_positions_of_entities(self.position, self.ct, 9, EntityType.SPLITTER, self.ct.get_team())
                     bridge_target_pos = random.choice(bridge_target_pos_choices) if bridge_target_pos_choices else None
-                    if bridge_target_pos and self.ct.can_build_bridge(position, bridge_target_pos):
-                        self.ct.build_bridge(position, bridge_target_pos)
+                    if bridge_target_pos and self.ct.can_build_bridge(self.position, bridge_target_pos):
+                        self.ct.build_bridge(self.position, bridge_target_pos)
                 
-                if not is_exposed(position, self.ct) and building_entity in CONVEYORS and same_team:
+                if not is_exposed(self.position, self.ct) and building_entity in CONVEYORS and same_team:
                     self.set_wandering()
             else:
                 self.set_target(self.base_position, BASE_DIST, BotState.GOING_BACK, TargetTypes.BASE)
@@ -222,7 +221,7 @@ class Gatherer(Bot):
         )
         
         if unvisited_ores:
-            to_visit = min(unvisited_ores, key=lambda ore: self.ct.get_position().distance_squared(ore))
+            to_visit = min(unvisited_ores, key=lambda ore: self.position.distance_squared(ore))
             self.visited_ore_sites.add(to_visit)
             print(f"I am going to visit {to_visit}")
             return to_visit
@@ -243,7 +242,6 @@ class Gatherer(Bot):
     
     
     def build_conveyor_chain(self, from_pos: Position, to_pos: Position, connect_next=True):
-        position = self.ct.get_position()
         bridge_target_pos_choices = get_positions_of_entities(from_pos, self.ct, 9, EntityType.SPLITTER, self.ct.get_team())
         
         if bridge_target_pos_choices and self.ct.get_tile_env(from_pos) not in ORE_SITES:
@@ -253,7 +251,7 @@ class Gatherer(Bot):
             return
 
         print(f"Building conveyor chain from {from_pos} to {to_pos}")
-        if position.distance_squared(from_pos) > 1:
+        if self.position.distance_squared(from_pos) > 1:
             self.set_target(from_pos, 0, BotState.GOING_TO_TARGET, TargetTypes.CONNECT_BRIDGE)
             return
 
@@ -262,7 +260,7 @@ class Gatherer(Bot):
         same_team = building_id and self.ct.get_team(building_id) == self.ct.get_team()
         
         if same_team and building_type in CONVEYORS:
-            if not self.build_harvester(position):
+            if not self.build_harvester(self.position):
                 self.set_wandering()
             return
 
@@ -309,6 +307,7 @@ class Gatherer(Bot):
                 if not checkable_position(check_pos, self.ct) or \
                     check_pos == move_pos or \
                     self.ct.get_tile_env(check_pos) != Environment.EMPTY or \
+                    self.ct.get_tile_builder_bot_id(check_pos) or \
                     (get_entity(check_pos, self.ct) not in IGNORED_BUILDINGS and not is_team_road(check_pos, self.ct)):
                     continue
                 ret = True
