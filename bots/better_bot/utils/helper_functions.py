@@ -107,7 +107,6 @@ def check_for_env(ct: Controller, directions: list[Direction], env: Environment)
             return check_pos
 
 def get_entity(pos: Position, ct: Controller) -> EntityType | None:
-    
     b_id = ct.get_tile_building_id(pos)
     return ct.get_entity_type(b_id) if b_id else None
 
@@ -127,6 +126,8 @@ def destroyable(pos: Position, ct: Controller) -> bool:
 
 def is_exposed(pos: Position, ct: Controller) -> bool:
     if not pos:
+        return False
+    if not checkable_position(pos, ct):
         return False
     if get_entity(pos, ct) not in CONVEYORS:
         return False

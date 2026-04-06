@@ -48,4 +48,5 @@ class TargetTypes(Enum):
     CONNECT_BRIDGE = 0
     BASE = 1
     ORE = 2
-     
+
+TURRET_THREAT_RADIUS = 9

@@ -3,20 +3,25 @@ from utils.constants import *
 from utils.helper_functions import *
 from cambc import Controller, Position, Direction, EntityType, Environment, ResourceType
 import random
+from itertools import product
 
 class Aggressor(Bot):
     def __init__(self, ct: Controller):
         self.aggression_targets = []
         self.turrets_in_range = []
+
+        self.own_launcher_pos = None
+        self.enemy_launchers = set()
+        self.rounds_without_launch = 0
         super().__init__(ct)
 
     def set_wandering(self):
         self.aggression_targets = []
         super().set_wandering()
 
-    def move_to_pos(self):
-        position = self.ct.get_position()
-        super().move_to_pos()
+    # def move_to_pos(self):
+    #     position = self.ct.get_position()
+    #     super().move_to_pos()
 
     def build_road(self, move_pos: Position, next_pos: Position):
         if self.ct.can_build_road(move_pos):
@@ -26,9 +31,11 @@ class Aggressor(Bot):
     def update_map(self):
         self.aggression_targets = []
         self.turrets_in_range = []
+        self.enemy_launchers = set()
         super().update_map()
+
         # Store all the bot launchers of enemies as a set
-        # Loop through the set and set all positions nearby as walls using set_from_position (or you can alternatively set it as update tile detects if it is a launcher)
+        # Loop through the set and set all positions nearby as walls using set_from_pos (or you can alternatively set it as update tile detects if it is a launcher)
         # If path finder can't find a path (Returns None) yet there is a target (current_target_position is not None) then:
         # Place a launcher (if possible) - if not then... uhh
         # Set target to the launcher
@@ -39,9 +46,58 @@ class Aggressor(Bot):
         # If the launcher doesn't launch myself for more than 3 rounds in a row (meaning there is not targets nearby), destroy the launcher
         # This is because we blindly path find to a bot launcher trusting that it has a target
 
+        # 1: Loop through enemy launchers and mark nearby tiles as walls
+        for launcher_pos in self.enemy_launchers:
+            for dx, dy in product(range(-3, 4), repeat=2):
+                if dx * dx + dy * dy <= TURRET_THREAT_RADIUS:
+                    wall_pos = Position(launcher_pos.x + dx, launcher_pos.y + dy)
+                    if is_in_bound(wall_pos, self.ct):
+                        self.set_from_pos(self.internal_map, wall_pos, Environment.WALL)
+            self.distance_map = None
+
+        # 2: Pick best target if not already hunting
         if self.current_state != BotState.GOING_TO_TARGET:
             if self.aggression_targets:
-                self.set_target(max(self.aggression_targets), 0, BotState.GOING_TO_TARGET)
+                _, best_target = max(self.aggression_targets)
+                self.set_target(best_target, 0, BotState.GOING_TO_TARGET)
+
+        # 3: If pathfinder can't find a path but we have a target, use launcher
+        if self.current_target_position is not None and self.current_state == BotState.GOING_TO_TARGET:
+            if self.distance_map is None:
+                self.run_flood_fill()
+
+            if self.distance_map is None:
+                # Check if we already have a launcher built
+                if self.own_launcher_pos is not None:
+                    own_launcher_id = self.ct.get_tile_building_id(self.own_launcher_pos)
+                    own_launcher_exists = (
+                        own_launcher_id and
+                        self.ct.get_entity_type(own_launcher_id) == EntityType.LAUNCHER and
+                        self.ct.get_team(own_launcher_id) == self.team
+                    )
+
+                    if own_launcher_exists:
+                        # Launcher idle too long; no nearby targets, destroy and reset
+                        if self.rounds_without_launch >= 3:
+                            if self.ct.can_destroy(self.own_launcher_pos):
+                                self.ct.destroy(self.own_launcher_pos)
+                            self.own_launcher_pos = None
+                            self.rounds_without_launch = 0
+                        else:
+                            self.rounds_without_launch += 1
+                            self.set_target(self.own_launcher_pos, 2, BotState.GOING_TO_TARGET)
+                    else:
+                        # Launcher is gone, reset
+                        self.own_launcher_pos = None
+                        self.rounds_without_launch = 0
+
+                # Try to place a new launcher if we don't have one
+                if self.own_launcher_pos is None:
+                    launcher_pos = self._try_build_launcher()
+                    if launcher_pos:
+                        self.own_launcher_pos = launcher_pos
+                        self.rounds_without_launch = 0
+                        self.set_target(launcher_pos, 2, BotState.GOING_TO_TARGET)
 
     def update_tile(self, tile: Position, building_id: int | None, bot_id: int | None):
         if building_id is None:
