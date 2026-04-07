@@ -114,9 +114,9 @@ class Aggressor(Bot):
             else:
                 self.evaluate_aggressor_target(tile, building_id, bot_id, etype)
         elif etype == EntityType.LAUNCHER and not (
-            check_for_entity(self.ct.get_position(), self.ct, DIRECTIONS, EntityType.CONVEYOR, self.team) or \
-            check_for_entity(self.ct.get_position(), self.ct, DIRECTIONS, EntityType.SPLITTER, self.team) or \
-            check_for_entity(self.ct.get_position(), self.ct, DIRECTIONS, EntityType.BRIDGE, self.team)
+            check_for_entity(tile, self.ct, DIRECTIONS, EntityType.CONVEYOR, self.team) or \
+            check_for_entity(tile, self.ct, DIRECTIONS, EntityType.SPLITTER, self.team) or \
+            check_for_entity(tile, self.ct, DIRECTIONS, EntityType.BRIDGE, self.team)
         ):
             self.allied_launchers.add(tile)
         

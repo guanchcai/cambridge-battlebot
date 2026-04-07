@@ -143,10 +143,17 @@ class Gatherer(Bot):
                 check_pos = self.position.add(d)
                 if not checkable_position(check_pos, self.ct):
                     continue
-                if self.get_from_pos(self.internal_map, check_pos) != Environment.EMPTY:
+                env = self.ct.get_tile_env(check_pos)
+                if env != Environment.EMPTY:
                     continue
-                self.dont_build_wall = d
-                break
+                if check_pos.distance_squared(self.base_position) <= 8:
+                    continue
+                if is_team_road(check_pos, self.ct) or get_entity(check_pos, self.ct) in IGNORED_BUILDINGS:
+                    self.dont_build_wall = d
+                    break
+            if not self.dont_build_wall:
+                self.set_wandering()
+
             
         if reached_ore:
             for d in CARDINAL_DIRECTIONS:
