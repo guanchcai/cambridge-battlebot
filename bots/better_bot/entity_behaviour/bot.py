@@ -229,6 +229,16 @@ class Bot(EBase):
         if r_ref_tile and r_ref_tile != env:
             self.rotational_symmetry = False
         
+        if self.map_width % 2 == 1 and tile.x == self.map_width // 2:
+            self.y_axis_symmetry = True
+            self.rotational_symmetry = False
+            self.x_axis_symmetry = False
+
+        if self.map_height % 2 == 1 and tile.y == self.map_height // 2:
+            self.x_axis_symmetry = True
+            self.rotational_symmetry = False
+            self.y_axis_symmetry = False
+        
     def add_symmetry_tile(self, tile: Position, env: Environment):
         if self.x_axis_symmetry + self.y_axis_symmetry + self.rotational_symmetry != 1:
             return

@@ -96,7 +96,8 @@ class Launcher(EBase):
             return
         
         allied_bots = list(filter(lambda x: self.ct.get_team(x) == self.team, self.can_launch))
-        launch_allied_bots()
+        if allied_bots:
+            launch_allied_bots()
         
     def evaluate_aggressor_target(self, tile: Position, building_id, bot_id, entity_type):
         def evaluate_harvesters():
