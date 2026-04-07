@@ -49,7 +49,6 @@ class Aggressor(Bot):
     def update_map(self):
         self.aggression_targets = []
         self.turrets_in_range = []
-        self.enemy_launchers = set()
         self.allied_launchers = set()
         self.conveyor_ends = {}
         super().update_map()
@@ -67,18 +66,18 @@ class Aggressor(Bot):
         # This is because we blindly path find to a bot launcher trusting that it has a target
 
         # 1: Loop through enemy launchers and mark nearby tiles as walls
-        for launcher_pos in self.enemy_launchers:
-            print(launcher_pos)
-            for dx in range(-1, 2):
-                for dy in range(-1, 2):
-                    if dx * dx + dy * dy <= TURRET_THREAT_RADIUS:
-                        wall_pos = Position(launcher_pos.x + dx, launcher_pos.y + dy)
-                        if is_in_bound(wall_pos, self.ct):
-                            self.set_from_pos(self.internal_map, wall_pos, Environment.WALL)
+        # for launcher_pos in self.enemy_launchers:
+        #     print(launcher_pos)
+        #     for dx in range(-1, 2):
+        #         for dy in range(-1, 2):
+        #             if dx * dx + dy * dy <= TURRET_THREAT_RADIUS:
+        #                 wall_pos = Position(launcher_pos.x + dx, launcher_pos.y + dy)
+        #                 if is_in_bound(wall_pos, self.ct):
+        #                     self.set_from_pos(self.internal_map, wall_pos, Environment.WALL)
                         
-                            if self.distance_map and wall_pos in self.distance_map and wall_pos != self.current_target_position:
-                                print(f"Encountered wall in path on position: {wall_pos}")
-                                self.distance_map = None
+        #                     if self.distance_map and wall_pos in self.distance_map and wall_pos != self.current_target_position:
+        #                         print(f"Encountered wall in path on position: {wall_pos}")
+        #                         self.distance_map = None
 
         # 2: Pick best target if not already hunting
         if self.current_state != BotState.GOING_TO_TARGET:
