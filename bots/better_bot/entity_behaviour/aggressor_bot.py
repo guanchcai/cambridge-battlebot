@@ -299,7 +299,7 @@ class Aggressor(Bot):
         
         if entity_type == EntityType.HARVESTER:
             evaluate_harvesters()
-        elif self.enemy_base_pos and tile.distance_squared(self.enemy_base_pos) <= 13 ** 2 and entity_type in CONVEYORS:
+        elif self.enemy_base_pos and tile.distance_squared(self.enemy_base_pos) <= SENTINEL_RANGE and entity_type in CONVEYORS:
             evaluate_conveyors()
 
     def _try_build_launcher(self):

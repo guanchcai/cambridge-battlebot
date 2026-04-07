@@ -1,3 +1,9 @@
+"""
+make sentinels prioritise conveyors connected to core (using ends or something) over everything make sentinel rotate
+left or right (there is a function for that, and whether if its left or right can be decided on guesses to enemy base ig) 
+if it is facing a harvester THIS CODE IS DECIDED IN AGGRESSOR SCRIPT BECAUSE DIRECTION IS DECIDED WHEN BUILDING AND CAN'T CHANGE AFTER
+"""
+
 from entity_behaviour.entity_base import *
 from cambc import EntityType, ResourceType
 from utils.constants import _SENTINEL
@@ -22,12 +28,20 @@ class Sentinel(EBase):
         etype = self.ct.get_entity_type(entity_id)
 
         if etype == EntityType.HARVESTER:
+            # rot left or right
+            
+
             return -1
 
         if build_id and bot_id:
-            if self.ct.get_entity_type(build_id) == EntityType.CORE:
-                return 1000
-            
+            match self.ct.get_entity_type(build_id):
+                case EntityType.CORE: return 1000
+                case EntityType.CONVEYOR:
+                    ends = self.get_ends(self.ct.get_position(build_id))
+                    if any(end and end[0] == EntityType.CORE and end[1] != self.ct.get_team() for end in ends):
+                        return 2000
+                case EntityType.MARKER: return -67676767
+
         if etype in set(VALUABLE_ENEMY_ENTITIES_ORDERED):
             return VALUABLE_ENEMY_ENTITIES_ORDERED.index(etype) + 5
         
