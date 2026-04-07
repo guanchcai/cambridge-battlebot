@@ -1,4 +1,4 @@
-from cambc import Controller, Environment, Position, EntityType
+from cambc import Controller, Environment, Position, EntityType, ResourceType
 from entity_behaviour.bot import Bot
 from utils.constants import CONVEYORS, BotState, DeltaTypes
 from utils.helper_functions import *
@@ -24,22 +24,26 @@ class BaseBuilder(Bot):
         del_y = abs(tile.y - self.base_position.y)
 
         entitytype = get_entity(tile, self.ct)
+        same_team = building_id and self.ct.get_team(building_id) == self.team
 
         if (del_x == 0 or del_y == 0) and max(del_x, del_y) == 2 and env == Environment.EMPTY:
-            if self.ct.get_global_resources()[0] >= FOUNDARY_THRESHHOLD or self.ct.get_global_resources()[1] > 0:
-                if entitytype != EntityType.FOUNDRY:
-                    self.potential_targets.append(tile)
-            elif is_team_road(tile, self.ct) or entitytype in IGNORED_BUILDINGS:
-                self.potential_targets.append(tile)
+            if is_team_road(tile, self.ct) or entitytype in IGNORED_BUILDINGS:
+                self.set_target(tile, 2, BotState.GOING_TO_TARGET)
         
         elif max(del_x, del_y) == 2 and env == Environment.EMPTY:
-            if get_entity(tile, self.ct) in IGNORED_BUILDINGS:
-                    self.potential_targets.append(tile)
+            if entitytype in IGNORED_BUILDINGS:
+                self.potential_targets.append(tile)
+            elif entitytype == EntityType.SPLITTER and same_team:
+                if self.ct.get_stored_resource(building_id) == ResourceType.RAW_AXIONITE:
+                    target_pos = get_conveyor_target(tile, self.ct)
+                    target_entity = get_entity(target_pos, self.ct)
+                    if target_entity != EntityType.FOUNDRY and target_entity not in CONVEYORS:
+                        self.potential_targets.append(target_pos) 
 
     def update_map(self):
         self.potential_targets = []
         super().update_map()      
-        if self.potential_targets:
+        if self.potential_targets and self.current_state != BotState.GOING_TO_TARGET:
             target = min(self.potential_targets, key=lambda p: self.ct.get_position().distance_squared(p))
             self.set_target(target, 2, BotState.GOING_TO_TARGET)
 
@@ -63,9 +67,12 @@ class BaseBuilder(Bot):
             if self.ct.can_build_barrier(self.current_target_position):
                 self.ct.build_barrier(self.current_target_position)
         elif del_x == 0 or del_y == 0:
-            if self.ct.can_destroy(self.current_target_position) and get_entity(self.current_target_position, self.ct) == EntityType.LAUNCHER:
+            foundary = False
+            can_build = self.ct.get_global_resources()[0] >= self.ct.get_foundry_cost()[0] and self.ct.get_action_cooldown() == 0
+            if can_build and self.ct.can_destroy(self.current_target_position) and get_entity(self.current_target_position, self.ct) == EntityType.LAUNCHER:
                 self.ct.destroy(self.current_target_position)
-            if self.ct.get_global_resources()[0] >= FOUNDARY_THRESHHOLD or self.ct.get_global_resources()[1] > 0:
+                foundary = True
+            if foundary:
                 if self.ct.can_build_foundry(self.current_target_position):
                     self.ct.build_foundry(self.current_target_position)
             elif self.ct.can_build_launcher(self.current_target_position):

@@ -16,6 +16,9 @@ class Launcher(EBase):
             check_for_entity(ct.get_position(), ct, DIRECTIONS, EntityType.SPLITTER, ct.get_team()) or \
             check_for_entity(ct.get_position(), ct, DIRECTIONS, EntityType.BRIDGE, ct.get_team())
         )
+        self.x_sym = True
+        self.y_sym = True
+        self.r_sym = True
     
     def run_tick(self, ct: Controller):
         self.ct = ct
@@ -34,10 +37,15 @@ class Launcher(EBase):
             entity_pos = self.ct.get_position(entity_id)
             same_team = self.team == self.ct.get_team(entity_id)
 
-            if not self.base_position:
-                if entity_type == EntityType.MARKER and self.ct.get_team(entity_id) == self.team:
-                    value = self.ct.get_marker_value(entity_id)
-                    self.base_position = decode_coordinate(value)
+            if entity_type == EntityType.CORE and self.ct.get_team(entity_id) == self.team:
+                self.base_position = entity_pos
+
+            if entity_type == EntityType.MARKER and self.ct.get_team(entity_id) == self.team:
+                value = self.ct.get_marker_value(entity_id)
+                self.base_position, x_s, y_s, r_s = decode_coordinate(value)
+                self.x_sym = x_s and self.x_sym
+                self.y_sym = y_s and self.y_sym
+                self.r_sym = r_s and self.r_sym
             
             if entity_type == EntityType.ROAD and self.ct.is_tile_passable(entity_pos):
                 self.enemy_targets.append((1, entity_pos, entity_type))
@@ -153,10 +161,10 @@ class Launcher(EBase):
         
         if bot_id or not building_id:
             return # Do not target ones that have a bot on them
-        
+        enemy_base = self.get_enemy_base()
         if entity_type == EntityType.HARVESTER:
             evaluate_harvesters()
-        elif entity_type in CONVEYORS:
+        elif entity_type in CONVEYORS and (not enemy_base or tile.distance_squared(enemy_base) <= 13 ** 2 * (self.x_sym + self.y_sym + self.r_sym)):
             evaluate_conveyors()
 
     
@@ -248,3 +256,23 @@ class Launcher(EBase):
             self.conveyor_ends[pos] = [(building_entity, self.ct.get_team(building_id))]
         
         return self.conveyor_ends[pos]
+    
+    
+    def get_enemy_base(self) -> Position | None:
+        if not self.base_position:
+            return None
+        
+        candidates = []
+        if self.x_sym:
+            candidates.append(Position(self.base_position.x, self.map_height - 1 - self.base_position.y))
+        if self.y_sym:
+            candidates.append(Position(self.map_width - 1 - self.base_position.x, self.base_position.y))
+        if self.r_sym:
+            candidates.append(Position(self.map_width - 1 - self.base_position.x, self.map_height - 1 - self.base_position.y))
+        
+        if not candidates:
+            return None
+        
+        avg_x = sum(p.x for p in candidates) // len(candidates)
+        avg_y = sum(p.y for p in candidates) // len(candidates)
+        return Position(avg_x, avg_y)

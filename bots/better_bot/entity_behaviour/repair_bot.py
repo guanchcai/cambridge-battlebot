@@ -94,12 +94,12 @@ class Repairer(Bot):
                 if self.ct.can_destroy(self.current_target_position):
                     self.ct.destroy(self.current_target_position)
                 
-                    self.set_target(self.base_position, 1, BotState.GOING_BACK)
+                    # self.set_target(self.base_position, 1, BotState.GOING_BACK)
             elif conveyor_target and checkable_position(conveyor_target, self.ct) and get_entity(conveyor_target, self.ct) in IGNORED_BUILDINGS:
                 if self.ct.can_destroy(self.current_target_position):
                     self.ct.destroy(self.current_target_position)
                 
-                    self.set_target(self.base_position, 1, BotState.GOING_BACK)
+                    # self.set_target(self.base_position, 1, BotState.GOING_BACK)
                     
     
     def set_wandering(self):
@@ -108,7 +108,7 @@ class Repairer(Bot):
             self.set_target(next_conveyor, 4, BotState.WANDERING)
         else:
             self.visited_conveyors.clear()
-            self.set_target(self.base_position, 9, BotState.WANDERING)
+            self.set_target(self.base_position, 0, BotState.WANDERING)
 
     def run_flood_fill(self):
         print(f"Going from {self.ct.get_position()} to {self.current_target_position}")
