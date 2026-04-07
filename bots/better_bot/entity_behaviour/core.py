@@ -7,7 +7,7 @@ class Core(EBase):
         self.spawn_queue = [Direction.EAST, Direction.CENTRE, Direction.WEST]
         self.spawned = 0
         super().__init__(ct)
-        self.multiplier = math.floor((self.map_width * self.map_height / 2500) * 200)
+        self.multiplier = math.floor((self.map_width * self.map_height / 2500) * 300)
         self.builder_id = None
     
     def run_tick(self, ct: Controller):

@@ -34,7 +34,13 @@ class BaseBuilder(Bot):
             if entitytype in IGNORED_BUILDINGS:
                 self.potential_targets.append(tile)
             elif entitytype == EntityType.SPLITTER and same_team:
-                if self.ct.get_stored_resource(building_id) == ResourceType.RAW_AXIONITE:
+                if self.ct.get_stored_resource(building_id) == ResourceType.TITANIUM:
+                    target_pos = get_conveyor_target(tile, self.ct)
+                    target_entity = get_entity(target_pos, self.ct)
+                    if target_entity == EntityType.BARRIER or target_entity in IGNORED_BUILDINGS or target_entity == EntityType.ROAD:
+                        self.potential_targets.append(target_pos) 
+                        
+                elif self.ct.get_stored_resource(building_id) == ResourceType.RAW_AXIONITE:
                     target_pos = get_conveyor_target(tile, self.ct)
                     target_entity = get_entity(target_pos, self.ct)
                     if target_entity != EntityType.FOUNDRY and target_entity not in CONVEYORS:
@@ -63,20 +69,31 @@ class BaseBuilder(Bot):
         del_y = abs(self.current_target_position.y - self.base_position.y)
         if self.ct.can_destroy(self.current_target_position) and is_team_road(self.current_target_position, self.ct):
             self.ct.destroy(self.current_target_position)
+        
+        if self.ct.can_fire(self.current_target_position) and get_entity(self.current_target_position, self.ct) == EntityType.ROAD:
+            self.ct.fire(self.current_target_position)
+
         if del_x == del_y and del_x == 2:
             if self.ct.can_build_barrier(self.current_target_position):
                 self.ct.build_barrier(self.current_target_position)
         elif del_x == 0 or del_y == 0:
-            foundary = False
-            can_build = self.ct.get_global_resources()[0] >= self.ct.get_foundry_cost()[0] and self.ct.get_action_cooldown() == 0
-            if can_build and self.ct.can_destroy(self.current_target_position) and get_entity(self.current_target_position, self.ct) == EntityType.LAUNCHER:
+            to_build = EntityType.BARRIER
+            entity_cost = self.ct.get_barrier_cost()[0]
+            e_type = get_entity(self.current_target_position, self.ct)
+            if e_type == EntityType.BARRIER:
+                to_build = EntityType.LAUNCHER
+                entity_cost = self.ct.get_launcher_cost()[0]
+            elif e_type == EntityType.LAUNCHER:
+                to_build = EntityType.FOUNDRY
+                entity_cost = self.ct.get_foundry_cost()[0]
+            
+            g_resource = self.ct.get_global_resources()[0]
+            can_build = g_resource >= entity_cost and self.ct.get_action_cooldown() == 0
+            if can_build and self.ct.can_destroy(self.current_target_position) and get_entity(self.current_target_position, self.ct) != to_build:
                 self.ct.destroy(self.current_target_position)
-                foundary = True
-            if foundary:
-                if self.ct.can_build_foundry(self.current_target_position):
-                    self.ct.build_foundry(self.current_target_position)
-            elif self.ct.can_build_launcher(self.current_target_position):
-                self.ct.build_launcher(self.current_target_position)
+            
+            if self.ct.can_build(to_build, self.current_target_position):
+                self.ct.build(to_build, self.current_target_position)
         elif max(del_x, del_y) == 2:
             d = decide_splitter_direction(self.current_target_position, self.base_position)
             if self.ct.can_build_splitter(self.current_target_position, d):

@@ -26,13 +26,7 @@ class Aggressor(Bot):
     # def move_to_pos(self):
     #     position = self.ct.get_position()
     #     super().move_to_pos()
-    def run_tick(self, ct):
-        p = ct.get_position()
-        b_id = ct.get_tile_building_id(p)
-        if self.own_launcher_pos:
-            if ct.can_fire(p) and ct.get_team(b_id) != ct.get_team():
-                ct.fire(p)
-                
+    def run_tick(self, ct):                
         return super().run_tick(ct)
 
     def build_road(self, move_pos: Position, next_pos: Position):
