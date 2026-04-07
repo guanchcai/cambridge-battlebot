@@ -5,6 +5,8 @@ from utils.path_finder import *
 from utils.helper_functions import *
 import random
 
+from itertools import product
+
 class Bot(EBase):
     def __init__(self, ct: Controller):
         super().__init__(ct)
@@ -96,6 +98,7 @@ class Bot(EBase):
 
             self.set_from_pos(self.internal_map, tile, env)
 
+            # TODO get the logic from aggressor bot :D
             self.update_tile(tile, building_id, bot_id)
             
             if self.get_from_pos(self.internal_map, tile) == Environment.WALL and self.distance_map and tile in self.distance_map and tile != self.current_target_position:
@@ -113,16 +116,14 @@ class Bot(EBase):
                     del self.buckets[bucket] 
             
         for launcher_pos in self.enemy_launchers:
-            for dx in range(-1, 2):
-                for dy in range(-1, 2):
-                    if dx * dx + dy * dy <= TURRET_THREAT_RADIUS:
-                        wall_pos = Position(launcher_pos.x + dx, launcher_pos.y + dy)
-                        if is_in_bound(wall_pos, self.ct):
-                            self.set_from_pos(self.internal_map, wall_pos, Environment.WALL)
-                        
-                            if self.distance_map and wall_pos in self.distance_map and wall_pos != self.current_target_position:
-                                print(f"Encountered wall in path on position: {wall_pos}")
-                                self.distance_map = None
+            for dx, dy in product(range(-1,2), repeat=2):
+                if dx * dx + dy * dy <= TURRET_THREAT_RADIUS:
+                    wall_pos = Position(launcher_pos.x + dx, launcher_pos.y + dy)
+                    if is_in_bound(wall_pos, self.ct):
+                        self.set_from_pos(self.internal_map, wall_pos, Environment.WALL)
+                    
+                        if self.distance_map and wall_pos in self.distance_map and wall_pos != self.current_target_position:
+                            self.distance_map = None
 
 
     def move_to_pos(self, direction_allowed=DIRECTIONS):
