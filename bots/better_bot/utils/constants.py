@@ -63,3 +63,5 @@ class TargetTypes(Enum):
 
 TURRET_THREAT_RADIUS = 2
 _SENTINEL = object()
+
+SENTINEL_RANGE = 25 # 5 ** 2

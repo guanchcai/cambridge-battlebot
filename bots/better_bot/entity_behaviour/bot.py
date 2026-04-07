@@ -27,6 +27,7 @@ class Bot(EBase):
         self.rotational_symmetry = True
 
         self.enemy_base_pos = None
+        self.enemy_launchers = set()
 
         # Exploration variables
         self.unexplored = set()
@@ -65,6 +66,8 @@ class Bot(EBase):
 
 
     def update_map(self):
+        self.enemy_launchers = set()
+
         self_id = self.ct.get_id()
         for tile in self.ct.get_nearby_tiles():
             building_id = self.ct.get_tile_building_id(tile)
@@ -108,6 +111,18 @@ class Bot(EBase):
                 bucket_list.pop()
                 if not self.buckets[bucket]:
                     del self.buckets[bucket] 
+            
+        for launcher_pos in self.enemy_launchers:
+            for dx in range(-1, 2):
+                for dy in range(-1, 2):
+                    if dx * dx + dy * dy <= TURRET_THREAT_RADIUS:
+                        wall_pos = Position(launcher_pos.x + dx, launcher_pos.y + dy)
+                        if is_in_bound(wall_pos, self.ct):
+                            self.set_from_pos(self.internal_map, wall_pos, Environment.WALL)
+                        
+                            if self.distance_map and wall_pos in self.distance_map and wall_pos != self.current_target_position:
+                                print(f"Encountered wall in path on position: {wall_pos}")
+                                self.distance_map = None
 
 
     def move_to_pos(self, direction_allowed=DIRECTIONS):

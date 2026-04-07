@@ -166,7 +166,7 @@ class Launcher(EBase):
         enemy_base = self.get_enemy_base()
         if entity_type == EntityType.HARVESTER:
             evaluate_harvesters()
-        elif entity_type in CONVEYORS and (not enemy_base or tile.distance_squared(enemy_base) <= 13 ** 2 * (self.x_sym + self.y_sym + self.r_sym)):
+        elif entity_type in CONVEYORS and (not enemy_base or tile.distance_squared(enemy_base) <= SENTINEL_RANGE * (self.x_sym + self.y_sym + self.r_sym)):
             evaluate_conveyors()
 
     
