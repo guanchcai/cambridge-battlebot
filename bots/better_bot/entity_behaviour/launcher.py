@@ -243,7 +243,7 @@ class Launcher(EBase):
             pos1 = pos.add(d)
             pos2 = pos.add(d.rotate_left().rotate_left())
             pos3 = pos.add(d.rotate_right().rotate_right())
-            self.conveyor_ends[pos] = self.get_ends(pos1) + self.get_ends(pos2) + self.ends(pos3)
+            self.conveyor_ends[pos] = self.get_ends(pos1) + self.get_ends(pos2) + self.get_ends(pos3)
         elif building_entity in CONVEYORS:
             self.conveyor_ends[pos] = self.get_ends(get_conveyor_target(pos, self.ct))
         elif building_entity in IGNORED_BUILDINGS or building_entity == EntityType.ROAD:

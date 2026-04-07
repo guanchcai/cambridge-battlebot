@@ -8,14 +8,19 @@ class Core(EBase):
         self.spawned = 0
         super().__init__(ct)
         self.multiplier = math.floor((self.map_width * self.map_height / 2500) * 200)
+        self.builder_id = None
     
     def run_tick(self, ct: Controller):
         if self.spawn_queue:
-            spawn_pos = self.original_position.add(self.spawn_queue[0])
+            spawn_dir = self.spawn_queue[0]
+            spawn_pos = self.original_position.add(spawn_dir)
             if ct.can_spawn(spawn_pos):
-                ct.spawn_builder(spawn_pos)
+                id = ct.spawn_builder(spawn_pos)
                 self.spawn_queue.pop(0)
                 self.spawned += 1
+                
+                if spawn_dir == Direction.CENTRE:
+                    self.builder_id = id
 
         ti, ax = ct.get_global_resources()
         if ax > ti // 2:
@@ -27,3 +32,8 @@ class Core(EBase):
         elif c_r % self.multiplier == self.multiplier - 1 and self.spawned <= 8:
             self.multiplier = max(10 , self.multiplier - 20)
             self.spawn_queue.append(Direction.WEST)
+
+        try:
+            ct.get_position(self.builder_id)
+        except Exception: # need to make a new builder
+            self.spawn_queue.append(Direction.CENTRE)
