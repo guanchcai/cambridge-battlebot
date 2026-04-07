@@ -292,7 +292,7 @@ class Gatherer(Bot):
             if self.ct.get_tile_env(check_pos) in ORE_SITES and check_pos in self.visited_ore_sites:
                 potential_harvester_pos = check_pos
                 break
-
+                
         building_entity = get_entity(potential_harvester_pos, self.ct) if potential_harvester_pos else None
         if potential_harvester_pos and potential_harvester_pos in self.visited_ore_sites:
             if building_entity in IGNORED_BUILDINGS or is_team_road(potential_harvester_pos, self.ct):

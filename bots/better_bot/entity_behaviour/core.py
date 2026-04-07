@@ -1,12 +1,13 @@
 from entity_behaviour.entity_base import *
 from cambc import Direction
+import math
 
 class Core(EBase):
     def __init__(self, ct: Controller):
         self.spawn_queue = [Direction.EAST, Direction.CENTRE, Direction.WEST]
         self.spawned = 0
         super().__init__(ct)
-        self.multiplier = math.floor((self.map_witdh * self.map_height / 2500) * 200)
+        self.multiplier = math.floor((self.map_width * self.map_height / 2500) * 200)
     
     def run_tick(self, ct: Controller):
         if self.spawn_queue:
