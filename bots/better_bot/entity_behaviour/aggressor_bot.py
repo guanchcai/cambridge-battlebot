@@ -1,5 +1,6 @@
 from entity_behaviour.bot import Bot
 from utils.constants import *
+from utils.constants import _SENTINEL
 from utils.helper_functions import *
 from cambc import Controller, Position, Direction, EntityType, Environment, ResourceType
 import random
@@ -331,9 +332,9 @@ class Aggressor(Bot):
         if not checkable_position(pos, self.ct):
             return [None] # None signifies going out of bounds
 
-        end = self.conveyor_ends.get(pos)
-        if end:
-            return end
+        cached = self.conveyor_ends.get(pos, _SENTINEL)
+        if cached is not _SENTINEL:
+            return cached
         
         self.conveyor_ends[pos] = [] # To help with looping
         building_id = self.ct.get_tile_building_id(pos)
