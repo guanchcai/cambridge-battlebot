@@ -26,7 +26,7 @@ class Gatherer(Bot):
             if not checkable_position(pos, self.ct):
                 return True
             b_entity = get_entity(pos, self.ct)
-            return self.ct.get_tile_env(pos) == Environment.EMPTY and (b_entity in IGNORED_BUILDINGS or b_entity in PASSABLE)
+            return self.ct.get_tile_env(pos) != Environment.WALL and (b_entity in IGNORED_BUILDINGS or b_entity in PASSABLE)
                 
         if self.get_from_pos(self.environment_map, tile) == Environment.ORE_TITANIUM:
             self.ore_sites.add(tile)
@@ -84,7 +84,7 @@ class Gatherer(Bot):
         if current_tile_id and not same_team:
             return False
 
-        if current_tile_entity is None and self.ct.get_tile_env(self.position) not in ORE_SITES:
+        if (current_tile_entity is None or is_team_road(self.position, self.ct)) and self.ct.get_tile_env(self.position) not in ORE_SITES:
             self.build_conveyor_chain(self.position, move_pos)
             return False
         elif next_pos:
@@ -137,21 +137,17 @@ class Gatherer(Bot):
 
         reached_ore = self.current_state == BotState.GOING_TO_TARGET and env in ORE_SITES
         can_build = self.ct.get_global_resources()[0] >= self.ct.get_harvester_cost()[0] + self.ct.get_bridge_cost()[0]
-        print(self.ct.get_cpu_time_elapsed())
+        
         if reached_ore and (self.dont_build_wall is None or self.get_from_pos(self.internal_map, self.position.add(self.dont_build_wall)) == Environment.WALL):
-            path_back = self.path_finder.run(
-                    self.position,
-                    self.base_position,
-                    False, 
-                    DeltaTypes.BRIDGE, 
-                    0, 
-                    True
-                )
-            if not path_back:
-                return
-            if len(path_back) > 1:
-                self.dont_build_wall = path_back[0].direction_to(path_back[1])
-        print(self.ct.get_cpu_time_elapsed())
+            for d in CARDINAL_DIRECTIONS:
+                check_pos = self.position.add(d)
+                if not checkable_position(check_pos, self.ct):
+                    continue
+                if self.get_from_pos(self.internal_map, check_pos) != Environment.EMPTY:
+                    continue
+                self.dont_build_wall = d
+                break
+            
         if reached_ore:
             for d in CARDINAL_DIRECTIONS:
                 check_pos = self.position.add(d)

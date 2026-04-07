@@ -93,13 +93,19 @@ class Repairer(Bot):
             elif is_directly_connected_to_turret(self.current_target_position, other_team(self.team), self.ct):
                 if self.ct.can_destroy(self.current_target_position):
                     self.ct.destroy(self.current_target_position)
-                
-                    # self.set_target(self.base_position, 1, BotState.GOING_BACK)
+
+                    self.move_to_adjacent()
+
+                    if self.ct.can_build_barrier(self.current_target_position):
+                        self.ct.build_barrier(self.current_target_position)
             elif conveyor_target and checkable_position(conveyor_target, self.ct) and get_entity(conveyor_target, self.ct) in IGNORED_BUILDINGS:
                 if self.ct.can_destroy(self.current_target_position):
                     self.ct.destroy(self.current_target_position)
+
+                    self.move_to_adjacent()
                 
-                    # self.set_target(self.base_position, 1, BotState.GOING_BACK)
+                    if self.ct.can_build_barrier(self.current_target_position):
+                        self.ct.build_barrier(self.current_target_position)
                     
     
     def set_wandering(self):

@@ -124,14 +124,22 @@ class Aggressor(Bot):
             self.allied_launchers.add(tile)
         
     def unreachable_path(self):
+        if self.current_state == BotState.WANDERING:
+            return super().unreachable_path()
         # Check if we already have a launcher built
         if self.own_launcher_pos is not None:
-            own_launcher_id = self.ct.get_tile_building_id(self.own_launcher_pos) if checkable_position(self.own_launcher_pos, self.ct) else None
-            own_launcher_exists = (
-                own_launcher_id and
-                self.ct.get_entity_type(own_launcher_id) == EntityType.LAUNCHER and
-                self.ct.get_team(own_launcher_id) == self.team
-            )
+            own_launcher_id = False
+            if checkable_position(self.own_launcher_pos, self.ct):
+                own_launcher_id = self.ct.get_tile_building_id(self.own_launcher_pos)
+            
+                own_launcher_exists = (
+                    own_launcher_id and
+                    self.ct.get_entity_type(own_launcher_id) == EntityType.LAUNCHER and
+                    self.ct.get_team(own_launcher_id) == self.team
+                )
+            else:
+                own_launcher_exists = True
+
 
             if not own_launcher_exists:
                 self.own_launcher_pos = None
@@ -197,7 +205,7 @@ class Aggressor(Bot):
         match to_build:
             case EntityType.SENTINEL:
                 can_build = self.ct.get_global_resources()[0] >= self.ct.get_sentinel_cost()[0] and self.ct.get_action_cooldown() == 0
-                if can_build and (building_id is None or is_team_road(self.current_target_position, self.ct)):
+                if can_build and (target_entity in IGNORED_BUILDINGS or is_team_road(self.current_target_position, self.ct)):
                     direction = self.current_target_position.direction_to(self.enemy_base_pos if self.enemy_base_pos else self.get_enemy_base())
                     
                     if p == self.current_target_position:

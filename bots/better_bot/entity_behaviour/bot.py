@@ -47,11 +47,12 @@ class Bot(EBase):
     def run_tick(self, ct: Controller):
         self.ct = ct
         self.position = ct.get_position()
+        self.move_to_pos()
+        print(f"Time left to diddle {self.ct.get_cpu_time_elapsed()}")
         self.update_map()
         if self.current_target_position:
             ct.draw_indicator_line(ct.get_position(), self.current_target_position, 255, 0, 0)
         
-        self.move_to_pos()
 
         for d in DIRECTIONS:
             pos = self.position.add(d)
@@ -162,7 +163,7 @@ class Bot(EBase):
         return True
     
     def unreachable_path(self):
-        return
+        self.set_wandering()
 
     def set_from_pos(self, target_list: list, pos: Position, value):
         target_list[pos.y * self.map_width + pos.x] = value
