@@ -109,8 +109,6 @@ class Aggressor(Bot):
         if not same_team:
             if etype in TURRETS:
                 self.turrets_in_range.append((tile, etype, self.ct.get_direction(building_id)))
-            elif etype == EntityType.LAUNCHER:
-                self.enemy_launchers.add(tile)
             else:
                 self.evaluate_aggressor_target(tile, building_id, bot_id, etype)
         elif etype == EntityType.LAUNCHER and not (
@@ -204,7 +202,8 @@ class Aggressor(Bot):
                 can_build = self.ct.get_global_resources()[0] >= self.ct.get_sentinel_cost()[0] and self.ct.get_action_cooldown() == 0
                 if can_build and (target_entity in IGNORED_BUILDINGS or is_team_road(self.current_target_position, self.ct)):
                     direction = self.current_target_position.direction_to(self.enemy_base_pos if self.enemy_base_pos else self.get_enemy_base())
-                    
+                    if is_harvester and direction == self.current_target_position.direction_to(is_harvester):
+                        direction = direction.rotate_left()
                     if p == self.current_target_position:
                         self.move_to_adjacent()
 

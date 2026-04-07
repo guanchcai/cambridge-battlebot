@@ -98,7 +98,9 @@ class Bot(EBase):
 
             self.set_from_pos(self.internal_map, tile, env)
 
-            # TODO get the logic from aggressor bot :D
+            if building_entity == EntityType.LAUNCHER and not same_team:
+                self.enemy_launchers.add(tile)
+                
             self.update_tile(tile, building_id, bot_id)
             
             if self.get_from_pos(self.internal_map, tile) == Environment.WALL and self.distance_map and tile in self.distance_map and tile != self.current_target_position:
@@ -245,15 +247,15 @@ class Bot(EBase):
         if r_ref_tile and r_ref_tile != env:
             self.rotational_symmetry = False
         
-        if self.map_width % 2 == 1 and tile.x == self.map_width // 2:
-            self.x_axis_symmetry = True
-            self.rotational_symmetry = False
-            self.y_axis_symmetry = False
-
-        if self.map_height % 2 == 1 and tile.y == self.map_height // 2:
+        if self.map_width % 2 == 1 and self.base_position.x == self.map_width // 2:
             self.y_axis_symmetry = True
             self.rotational_symmetry = False
             self.x_axis_symmetry = False
+
+        if self.map_height % 2 == 1 and self.base_position.y == self.map_height // 2:
+            self.x_axis_symmetry = True
+            self.rotational_symmetry = False
+            self.y_axis_symmetry = False
         
     def add_symmetry_tile(self, tile: Position, env: Environment):
         if self.x_axis_symmetry + self.y_axis_symmetry + self.rotational_symmetry != 1:

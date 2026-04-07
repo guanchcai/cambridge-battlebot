@@ -83,6 +83,7 @@ class AStarPathfinder:
 
         while open_set:
             f, cx, cy = heapq.heappop(open_set)
+            print(f"Checking {cx}, {cy}")
             ci = cy * w + cx
 
             if closed_set[ci]:

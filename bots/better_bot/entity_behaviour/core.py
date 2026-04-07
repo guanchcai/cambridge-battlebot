@@ -30,7 +30,7 @@ class Core(EBase):
         print(self.spawned <= 5)
         if c_r == max(self.map_width // 2, self.map_height // 2):
             self.spawn_queue.append(Direction.EAST)
-        elif c_r % self.multiplier == self.multiplier - 1 and self.spawned <= 5:
+        elif c_r % self.multiplier == self.multiplier - 1 and self.spawned <= 20:
             self.multiplier = max(10 , self.multiplier - 20)
             self.spawn_queue.append(Direction.WEST)
 
