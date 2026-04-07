@@ -257,6 +257,9 @@ def is_valid_target(pos: Position, ct: Controller):
     if building_entity in CONVEYORS and ct.get_team(building_id) != ct.get_team():
         return True
     
+    if building_entity == EntityType.LAUNCHER and ct.get_team(building_id) == ct.get_team():
+        return True
+    
     elif building_entity in IGNORED_BUILDINGS or building_entity == EntityType.ROAD:
         for d in BRIDGE_DELTAS:
             check_pos = Position(pos.x + d[0], pos.y + d[1])

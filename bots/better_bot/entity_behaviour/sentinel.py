@@ -1,5 +1,6 @@
 from entity_behaviour.entity_base import *
 from cambc import EntityType, ResourceType
+from utils.constants import _SENTINEL
 from utils.helper_functions import *
 from utils.constants import *
 
@@ -29,9 +30,9 @@ class Sentinel(EBase):
             
         if etype in set(VALUABLE_ENEMY_ENTITIES_ORDERED):
             return VALUABLE_ENEMY_ENTITIES_ORDERED.index(etype) + 5
-
+        
         return 3
-
+    
 
     def _fire_at_best_target(self):
         cand = None
@@ -40,7 +41,7 @@ class Sentinel(EBase):
         for tile in self.ct.get_nearby_tiles():
             if not self.ct.can_fire(tile): continue
             for end_building in self.get_ends(tile):
-                if end_building[0] in TURRETS and end_building[1] == self.team:
+                if end_building and end_building[0] in TURRETS and end_building[1] == self.team:
                     continue
 
             build_id = self.ct.get_tile_building_id(tile)
@@ -59,9 +60,9 @@ class Sentinel(EBase):
         if not checkable_position(pos, self.ct):
             return [None] # None signifies going out of bounds
 
-        end = self.conveyor_ends.get(pos)
-        if end:
-            return end
+        cached = self.conveyor_ends.get(pos, _SENTINEL)
+        if cached is not _SENTINEL:
+            return cached
         
         self.conveyor_ends[pos] = [] # To help with looping
         building_id = self.ct.get_tile_building_id(pos)
@@ -71,7 +72,7 @@ class Sentinel(EBase):
             pos1 = pos.add(d)
             pos2 = pos.add(d.rotate_left().rotate_left())
             pos3 = pos.add(d.rotate_right().rotate_right())
-            self.conveyor_ends[pos] = self.get_ends(pos1) + self.get_ends(pos2) + self.ends(pos3)
+            self.conveyor_ends[pos] = self.get_ends(pos1) + self.get_ends(pos2) + self.get_ends(pos3)
         elif building_entity in CONVEYORS:
             self.conveyor_ends[pos] = self.get_ends(get_conveyor_target(pos, self.ct))
         elif building_entity in IGNORED_BUILDINGS or building_entity == EntityType.ROAD:

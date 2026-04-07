@@ -12,6 +12,7 @@ VALUABLE_ENEMY_ENTITIES_ORDERED = [
     EntityType.ARMOURED_CONVEYOR,
     EntityType.SPLITTER,
     EntityType.BRIDGE,
+    EntityType.LAUNCHER,
     EntityType.FOUNDRY,
     EntityType.BUILDER_BOT,
     EntityType.CORE,
@@ -61,3 +62,4 @@ class TargetTypes(Enum):
     ORE = 2
 
 TURRET_THREAT_RADIUS = 2
+_SENTINEL = object()
