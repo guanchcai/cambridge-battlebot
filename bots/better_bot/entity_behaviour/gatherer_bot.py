@@ -78,9 +78,6 @@ class Gatherer(Bot):
         same_team = current_tile_id and self.ct.get_team(current_tile_id) == self.ct.get_team()
         if self.ct.can_fire(self.position) and not same_team:
             self.ct.fire(self.position)
-        
-        if self.ct.can_destroy(self.position) and is_team_road(self.position, self.ct):
-            self.ct.destroy(self.position)
             
         current_tile_entity = get_entity(self.position, self.ct)
         
@@ -141,7 +138,7 @@ class Gatherer(Bot):
         reached_ore = self.current_state == BotState.GOING_TO_TARGET and env in ORE_SITES
         can_build = self.ct.get_global_resources()[0] >= self.ct.get_harvester_cost()[0] + self.ct.get_bridge_cost()[0]
         print(self.ct.get_cpu_time_elapsed())
-        if reached_ore and self.dont_build_wall is None:
+        if reached_ore and (self.dont_build_wall is None or self.get_from_pos(self.internal_map, self.position.add(self.dont_build_wall)) == Environment.WALL):
             path_back = self.path_finder.run(
                     self.position,
                     self.base_position,
@@ -172,16 +169,20 @@ class Gatherer(Bot):
             self.set_target(self.base_position, BASE_DIST, BotState.GOING_BACK, TargetTypes.BASE)
             
         elif self.current_state == BotState.GOING_TO_TARGET and env == Environment.EMPTY:
+            print("Reached here 1")
             if self.position.distance_squared(self.base_position) <= BASE_DIST:
+                print("Reached here 2")
                 if is_exposed(self.position, self.ct) and get_entity(self.position, self.ct) == EntityType.BRIDGE: # Duplicate code fix later
-                    for d in CARDINAL_DIRECTIONS:
+                    print("Reached here 3")
+                    for d in DIRECTIONS:
                         check_pos = self.position.add(d)
                         if not checkable_position(check_pos, self.ct) or \
                             self.ct.get_tile_env(check_pos) != Environment.EMPTY or \
-                            get_entity(check_pos, self.ct) not in IGNORED_BUILDINGS:
+                            not (get_entity(check_pos, self.ct) in IGNORED_BUILDINGS or is_team_road(check_pos, self.ct)):
                             continue
                         elif self.ct.can_destroy(check_pos) and is_team_road(check_pos, self.ct):
                             self.ct.destroy(check_pos)
+                        print("Reached here 4")
                         if self.ct.can_build_launcher(check_pos):
                             self.ct.build_launcher(check_pos)
                             self.launchers_built += 1
@@ -208,11 +209,11 @@ class Gatherer(Bot):
         if self.launchers_built >= self.launcher_limit:
             return None
         unvisited_ores = None
-        if self.launchers_built <= 0.5 * self.launcher_limit:
+        if self.harvester_count <= 3:
             unvisited_ores = self.ore_sites - self.visited_ore_sites
         else:
             unvisited_ores = self.ore_sites.union(self.ignored_ore_sites) - self.visited_ore_sites
-        
+        print(f"Unvisited: {unvisited_ores}")
         unvisited_ores = set(
             filter(
                 lambda p: (self.enemy_base_pos is None) or self.base_position.distance_squared(p) <= 1.3 * self.enemy_base_pos.distance_squared(p), 
@@ -242,6 +243,9 @@ class Gatherer(Bot):
     
     
     def build_conveyor_chain(self, from_pos: Position, to_pos: Position, connect_next=True):
+        if self.ct.can_destroy(from_pos) and is_team_road(from_pos, self.ct):
+            self.ct.destroy(from_pos)
+
         bridge_target_pos_choices = get_positions_of_entities(from_pos, self.ct, 9, EntityType.SPLITTER, self.ct.get_team())
         
         if bridge_target_pos_choices and self.ct.get_tile_env(from_pos) not in ORE_SITES:
@@ -252,6 +256,7 @@ class Gatherer(Bot):
 
         print(f"Building conveyor chain from {from_pos} to {to_pos}")
         if self.position.distance_squared(from_pos) > 1:
+            print("Too far away!")
             self.set_target(from_pos, 0, BotState.GOING_TO_TARGET, TargetTypes.CONNECT_BRIDGE)
             return
 
@@ -260,7 +265,8 @@ class Gatherer(Bot):
         same_team = building_id and self.ct.get_team(building_id) == self.ct.get_team()
         
         if same_team and building_type in CONVEYORS:
-            if not self.build_harvester(self.position):
+            print("Reached existing chain")
+            if not self.build_harvester(self.ct.get_position()):
                 self.set_wandering()
             return
 
@@ -278,6 +284,7 @@ class Gatherer(Bot):
     
     def build_harvester(self, position):
         potential_harvester_pos = None
+        print(self.visited_ore_sites)
         for d in CARDINAL_DIRECTIONS:
             check_pos = position.add(d)
             if not checkable_position(check_pos, self.ct):
@@ -293,6 +300,7 @@ class Gatherer(Bot):
                     self.ct.destroy(potential_harvester_pos)
                 if self.ct.can_build_harvester(potential_harvester_pos):
                     self.ct.build_harvester(potential_harvester_pos)
+                    self.harvester_count += 1
                 return True
             
     def build_bot_thrower(self, position, move_pos):

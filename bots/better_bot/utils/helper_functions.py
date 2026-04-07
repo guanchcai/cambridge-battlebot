@@ -71,9 +71,9 @@ def min_with_random_tiebreak(iterable, key=(lambda x: x)):
 def other_team(team: Team) -> Team:
     match team:
         case Team.A:
-            Team.B
+            return Team.B
         case Team.B:
-            Team.A
+            return Team.A
 
 def check_for_entity(position: Position, ct: Controller, directions: list[Direction], entity: EntityType, team: Team) -> Position:
     for d in directions:
@@ -133,15 +133,17 @@ def is_exposed(pos: Position, ct: Controller) -> bool:
         return False
     return check_for_entity(pos, ct, DIRECTIONS, EntityType.LAUNCHER, ct.get_team()) is None
 
-def encode_coordinate(pos: Position) -> int:
-    encoded = (pos.x << 6) | pos.y
+def encode_coordinate(pos: Position, sym1: bool, sym2: bool, sym3: bool) -> int:
+    encoded = (sym1 << 14) | (sym2 << 13) | (sym3 << 12) | (pos.x << 6) | pos.y
     return encoded
 
-
-def decode_coordinate(encoded: int) -> Position:
-    x = encoded >> 6
+def decode_coordinate(encoded: int) -> tuple[Position, bool, bool, bool]:
+    sym1 = bool((encoded >> 14) & 1)
+    sym2 = bool((encoded >> 13) & 1)
+    sym3 = bool((encoded >> 12) & 1)
+    x = (encoded >> 6) & 0b111111
     y = encoded & 0b111111
-    return Position(x, y)
+    return Position(x, y), sym1, sym2, sym3
 
 def get_skibidi_distance(pos1: Position, pos2: Position):
     return max(abs(pos1.x - pos2.x), abs(pos1.y - pos2.y))
@@ -250,18 +252,17 @@ def is_bot_nearby(pos: Position, ct: Controller):
             return True
         
 def is_valid_target(pos: Position, ct: Controller):
-    position = ct.get_position()
     building_id = ct.get_tile_building_id(pos)
     building_entity = ct.get_entity_type(building_id) if building_id else None
     if building_entity in CONVEYORS and ct.get_team(building_id) != ct.get_team():
         return True
     
-    elif building_id is None or is_team_road(pos, ct):
+    elif building_entity in IGNORED_BUILDINGS or building_entity == EntityType.ROAD:
         for d in BRIDGE_DELTAS:
-            check_pos = Position(position.x + d[0], position.y + d[1])
+            check_pos = Position(pos.x + d[0], pos.y + d[1])
             if not checkable_position(check_pos, ct):
                 continue
-            if get_conveyor_target(check_pos, ct) == position:
+            if get_conveyor_target(check_pos, ct) == pos:
                 return True
             if d in CARDINAL_DELTAS and get_entity(check_pos, ct) == EntityType.HARVESTER:
                 return True

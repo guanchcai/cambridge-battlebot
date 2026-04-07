@@ -56,7 +56,7 @@ class Bot(EBase):
         for d in DIRECTIONS:
             pos = self.position.add(d)
             if ct.can_place_marker(pos):
-                ct.place_marker(pos, encode_coordinate(self.base_position))
+                ct.place_marker(pos, encode_coordinate(self.base_position, self.x_axis_symmetry, self.y_axis_symmetry, self.rotational_symmetry))
                 break
         
         if ct.can_heal(self.position):
