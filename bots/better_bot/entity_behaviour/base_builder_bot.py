@@ -43,7 +43,7 @@ class BaseBuilder(Bot):
                 elif self.ct.get_stored_resource(building_id) == ResourceType.RAW_AXIONITE:
                     target_pos = get_conveyor_target(tile, self.ct)
                     target_entity = get_entity(target_pos, self.ct)
-                    if target_entity != EntityType.FOUNDRY and target_entity not in CONVEYORS:
+                    if target_entity == EntityType.LAUNCHER and target_entity not in CONVEYORS:
                         self.potential_targets.append(target_pos) 
 
     def update_map(self):
