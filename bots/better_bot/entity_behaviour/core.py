@@ -6,6 +6,7 @@ class Core(EBase):
         self.spawn_queue = [Direction.EAST, Direction.CENTRE]
         self.spawned = 0
         super().__init__(ct)
+        self.multiplier = math.floor((self.map_witdh * self.map_height / 2500) * 200)
     
     def run_tick(self, ct: Controller):
         if self.spawn_queue:
@@ -22,5 +23,6 @@ class Core(EBase):
         c_r = ct.get_current_round()
         if c_r == max(self.map_width // 2, self.map_height // 2):
             self.spawn_queue.append(Direction.EAST)
-        elif c_r % 50 == 49 and self.spawned <= 8:
+        elif c_r % self.multiplier == self.multiplier - 1 and self.spawned <= 8:
+            self.multiplier = max(10 , self.multiplier - 20)
             self.spawn_queue.append(Direction.WEST)
