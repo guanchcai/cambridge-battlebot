@@ -30,9 +30,6 @@ class Gatherer(Bot):
                 
         if self.get_from_pos(self.environment_map, tile) == Environment.ORE_TITANIUM:
             self.ore_sites.add(tile)
-            if self.current_state == BotState.GOING_TO_TARGET and self.target_type == TargetTypes.ORE:
-                self.visited_ore_sites.discard(self.current_target_position)
-                self.set_wandering()
         elif self.get_from_pos(self.environment_map, tile) == Environment.ORE_AXIONITE:
             self.ignored_ore_sites.add(tile)
     
@@ -138,6 +135,10 @@ class Gatherer(Bot):
         if building_id and not same_team:
             if self.ct.can_fire(self.position):
                 self.ct.fire(self.position)
+        print(get_entity(self.current_target_position, self.ct))
+        if get_entity(self.current_target_position, self.ct) == EntityType.CORE:
+            self.set_wandering()
+            return
 
         reached_ore = self.current_state == BotState.GOING_TO_TARGET and env in ORE_SITES
         can_build = self.ct.get_global_resources()[0] >= self.ct.get_harvester_cost()[0] + self.ct.get_bridge_cost()[0]
@@ -267,8 +268,6 @@ class Gatherer(Bot):
         if bridge_target_pos_choices and self.ct.get_tile_env(from_pos) not in ORE_SITES:
             bridge_target_pos = random.choice(bridge_target_pos_choices)
             to_pos = bridge_target_pos
-        elif from_pos.distance_squared(self.base_position) <= BASE_DIST and not bridge_target_pos_choices:
-            return
 
         print(f"Building conveyor chain from {from_pos} to {to_pos}")
         if self.position.distance_squared(from_pos) > 1:
@@ -299,7 +298,7 @@ class Gatherer(Bot):
                     self.set_target(to_pos, 0, BotState.GOING_TO_TARGET, TargetTypes.CONNECT_BRIDGE)
         elif from_pos.distance_squared(to_pos) == 1 and self.ct.can_build_conveyor(from_pos, from_pos.direction_to(to_pos)):
             bot_id = self.ct.get_tile_builder_bot_id(from_pos)
-            if not bot_id:
+            if not bot_id or bot_id == self.ct.get_id():
                 self.ct.build_conveyor(from_pos, from_pos.direction_to(to_pos))
     
     def build_harvester(self, position):

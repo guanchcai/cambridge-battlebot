@@ -26,8 +26,8 @@ class Aggressor(Bot):
     # def move_to_pos(self):
     #     position = self.ct.get_position()
     #     super().move_to_pos()
-    def run_tick(self, ct):      
-        print(f"Enemy pos: {self.get_enemy_base()}")          
+    def run_tick(self, ct):           
+        print(f"Enemy pos: {self.get_enemy_base()}")       
         return super().run_tick(ct)
 
     def build_road(self, move_pos: Position, next_pos: Position):
@@ -53,6 +53,7 @@ class Aggressor(Bot):
         self.allied_launchers = set()
         self.conveyor_ends = {}
         super().update_map()
+        print(f"Enemy pos: {self.get_enemy_base()}")   
 
         # Store all the bot launchers of enemies as a set
         # Loop through the set and set all positions nearby as walls using set_from_pos (or you can alternatively set it as update tile detects if it is a launcher)
