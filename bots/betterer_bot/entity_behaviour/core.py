@@ -45,11 +45,11 @@ class Core(EBase):
         if c_r == 100:
             self.spawn_queue.append(Direction.NORTH)
 
-        if c_r % self.multiplier == self.multiplier - 1:
-            self.multiplier = max(10 , self.multiplier - 20)
-            self.spawn_queue.append(Direction.WEST)
+        # if c_r % self.multiplier == self.multiplier - 1:
+        #     self.multiplier = max(10 , self.multiplier - 20)
+        #     self.spawn_queue.append(Direction.WEST)
 
-        try:
-            ct.get_position(self.builder_id)
-        except Exception: # need to make a new builder
-            self.spawn_queue.append(Direction.CENTRE)
+        # try:
+        #     ct.get_position(self.builder_id)
+        # except Exception: # need to make a new builder
+        #     self.spawn_queue.append(Direction.CENTRE)

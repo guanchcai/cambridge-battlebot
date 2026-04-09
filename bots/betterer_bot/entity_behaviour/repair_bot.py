@@ -58,6 +58,7 @@ class Repairer(Bot):
 
     def update_tile(self, tile: Position, tile_data: TileData | None):
         if tile_data is None: return
+        if not checkable_position(tile, self.ct): return
 
         if tile_data.bot_id and self.ct.get_team(tile_data.bot_id) == self.team:
             return
@@ -86,7 +87,7 @@ class Repairer(Bot):
                 self.repair_targets.append((tile, 0))
             elif etype != EntityType.SPLITTER and conveyor_target and checkable_position(conveyor_target, self.ct):
                 conveyor_target_tile_data = self.get_from_pos(conveyor_target)
-                if conveyor_target_tile_data.own_team and conveyor_target_tile_data.building_type in VALUABLE_ENEMY_ENTITIES:
+                if conveyor_target_tile_data and conveyor_target_tile_data.own_team and conveyor_target_tile_data.building_type in VALUABLE_ENEMY_ENTITIES:
                     self.repair_targets.append((tile, 0))
 
             if tile not in self.visited_conveyors:
@@ -106,8 +107,10 @@ class Repairer(Bot):
                 #         is_valid_repair_target = True
                 if not is_valid_repair_target:
                     for nearby_building_id in self.ct.get_nearby_buildings(9):
+                        if self.ct.get_entity_type(nearby_building_id) not in CONVEYORS:
+                            continue
                         building_position = self.ct.get_position(nearby_building_id)
-                        if self.ct.get_direction(nearby_building_id) == tile:
+                        if get_conveyor_target(building_position, self.ct) == tile:
                             is_valid_repair_target = True
                             break
 
@@ -164,18 +167,6 @@ class Repairer(Bot):
         else:
             self.visited_conveyors.clear()
             self.set_target(self.base_position, 0, BotState.WANDERING)
-
-    def run_flood_fill(self):
-        print(f"Going from {self.ct.get_position()} to {self.current_target_position}")
-        
-        self.distance_map = self.path_finder.run(
-            self.ct.get_position(),
-            self.current_target_position,
-            True, 
-            DeltaTypes.ALL, 
-            self.target_distance_squared, 
-            self.target_distance_squared == 0
-        )
 
     def build_conveyor_chain(self, from_pos: Position, to_pos: Position, connect_next=True):
         # if self.ct.can_destroy(from_pos) and is_team_road(from_pos, self.ct):

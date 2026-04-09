@@ -181,7 +181,7 @@ class Aggressor(Bot):
                         self.ct.build_barrier(self.current_target_position)
 
 
-    def evaluate_aggressor_target(self, tile: Position, building_id, bot_id, entity_type):
+    def evaluate_aggressor_target(self, tile: Position, tile_data: TileData):
         def evaluate_harvesters():
             for d in CARDINAL_DIRECTIONS:
                 check_pos = tile.add(d)
