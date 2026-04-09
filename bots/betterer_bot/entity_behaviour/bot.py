@@ -174,6 +174,9 @@ class Bot(EBase):
 
 
     def build_road(self, move_pos: Position, next_pos: Position):
+        move_pos_data = self.get_from_pos(move_pos)
+        if move_pos_data and move_pos_data.destroyable() and self.ct.can_destroy(move_pos):
+            self.ct.destroy(move_pos)
         if self.ct.can_build_road(move_pos):
             self.ct.build_road(move_pos)
         

@@ -6,7 +6,7 @@ ALL_DIRECTIONS = {Direction.CENTRE, Direction.NORTH, Direction.SOUTH, Direction.
 CARDINAL_DIRECTIONS = {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST}
 DIAGONAL_DIRECTIONS = {Direction.NORTHEAST, Direction.NORTHWEST, Direction.SOUTHEAST, Direction.SOUTHWEST}
 PASSABLE = {None, EntityType.BRIDGE, EntityType.CONVEYOR, EntityType.ROAD, EntityType.ARMOURED_CONVEYOR, EntityType.BUILDER_BOT, EntityType.CORE, EntityType.MARKER, EntityType.SPLITTER}
-VALUABLE_ENEMY_ENTITIES = {EntityType.CONVEYOR, EntityType.ARMOURED_CONVEYOR, EntityType.SPLITTER, EntityType.BRIDGE, EntityType.FOUNDRY, EntityType.BUILDER_BOT, EntityType.CORE, EntityType.GUNNER, EntityType.SENTINEL}
+VALUABLE_ENEMY_ENTITIES = {EntityType.CONVEYOR, EntityType.ARMOURED_CONVEYOR, EntityType.SPLITTER, EntityType.BRIDGE, EntityType.FOUNDRY, EntityType.BUILDER_BOT, EntityType.CORE, EntityType.GUNNER, EntityType.SENTINEL, EntityType.BREACH}
 VALUABLE_ENEMY_ENTITIES_ORDERED = [
     EntityType.CONVEYOR,
     EntityType.ARMOURED_CONVEYOR,
@@ -41,7 +41,7 @@ DIAGONAL_DELTAS = [
     (-1, 1, 1.1)
 ]
 ALL_DELTAS = CARDINAL_DELTAS + DIAGONAL_DELTAS
-BRIDGE_PENALTY = 4
+BRIDGE_PENALTY = 5
 BRIDGE_DELTAS = [(dx, dy, (BRIDGE_PENALTY if dx*dx + dy*dy != 1 else 1)) for dx in range(-3, 4) for dy in range(-3, 4) if 0 < dx*dx + dy*dy <= 9]
 
 class BotState(Enum):

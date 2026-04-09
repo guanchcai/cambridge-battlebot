@@ -19,8 +19,10 @@ class Core(EBase):
 
         if bot_count < 2:
             self.no_bot_counter += 1
+        else:
+            self.no_bot_counter = 0
 
-        if self.no_bot_counter >= 5:
+        if self.no_bot_counter >= 20 and not self.spawn_queue:
             self.spawn_queue.append(Direction.EAST)
             self.no_bot_counter = 0
 
@@ -36,8 +38,10 @@ class Core(EBase):
                     self.builder_id = id
 
         ti, ax = ct.get_global_resources()
-        if ax > ti // 2:
-            ct.convert(ax - ti // 2)
+        if ct.get_current_round() < 1000:
+            ct.convert(ax)
+        elif ax > ti // 3:
+            ct.convert(ax - ti // 3)
 
 
         c_r = ct.get_current_round()
