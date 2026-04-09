@@ -71,7 +71,7 @@ class Repairer(Bot):
                 self.repair_targets.append((tile, 2))
 
             targeted_enemy_turret = False
-            c_target = get_conveyor_target(pos, self.ct)
+            c_target = get_conveyor_target(tile, self.ct)
             if c_target and checkable_position(c_target, self.ct):
                 turret_tile_data = self.get_from_pos(c_target)
                 if turret_tile_data and turret_tile_data.building_type in TURRETS and turret_tile_data.own_team:
@@ -93,9 +93,34 @@ class Repairer(Bot):
                 self.visiting_queue.add(tile)
 
             if tile == self.current_target_position and self.current_state == BotState.GOING_TO_TARGET:
+                is_valid_repair_target = False
+
+                # is damaged
+                if self.ct.get_hp(tile_data.building_id) != self.ct.get_max_hp(tile_data.building_id):
+                    is_valid_repair_target = True
+
+                # conveyor pointing directly into it AND empty
+                # if conveyor_target and checkable_position(conveyor_target, self.ct):
+                #     conveyor_target_tile_data = self.get_from_pos(conveyor_target)
+                #     if conveyor_target_tile_data.building_type in VALUABLE_ENEMY_ENTITIES and conveyor_target_tile_data.own_team:
+                #         is_valid_repair_target = True
+                if not is_valid_repair_target:
+                    for nearby_building_id in self.ct.get_nearby_buildings(9):
+                        building_position = self.ct.get_position(nearby_building_id)
+                        if self.ct.get_direction(nearby_building_id) == tile:
+                            is_valid_repair_target = True
+                            break
+
+                # conveyor sending stuff to enemy
+                if not is_valid_repair_target:
+                    if conveyor_target and checkable_position(c_target, self.ct):
+                        c_target_data = self.get_from_pos(conveyor_target)
+                        if c_target_data and not c_target_data.own_team and c_target_data.building_type in TURRETS:
+                            is_valid_repair_target = True
+
                 if not(
                     self.ct.get_hp(tile_data.building_id) != self.ct.get_max_hp(tile_data.building_id) or \
-                    is_valid_repair_target(tile, self.ct) # TODO
+                    is_valid_repair_target
                 ):
                     self.set_wandering()
 

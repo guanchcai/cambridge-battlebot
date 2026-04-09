@@ -1,3 +1,4 @@
+from utils.tile_info import TileData
 from entity_behaviour.bot import Bot
 from utils.constants import *
 from utils.constants import _SENTINEL
@@ -26,15 +27,6 @@ class Aggressor(Bot):
     # def move_to_pos(self):
     #     position = self.ct.get_position()
     #     super().move_to_pos()
-    def run_tick(self, ct):           
-        print(f"Enemy pos: {self.get_enemy_base()}")       
-        return super().run_tick(ct)
-
-    def build_road(self, move_pos: Position, next_pos: Position):
-        print(f"Trying to build road at {move_pos}")
-        if self.ct.can_build_road(move_pos):
-            self.ct.build_road(move_pos)
-        return True
     
     def run_flood_fill(self):
         print(f"Going from {self.ct.get_position()} to {self.current_target_position} and ignoring walls = {self.target_distance_squared == 0}")
@@ -53,33 +45,6 @@ class Aggressor(Bot):
         self.allied_launchers = set()
         self.conveyor_ends = {}
         super().update_map()
-        print(f"Enemy pos: {self.get_enemy_base()}")   
-
-        # Store all the bot launchers of enemies as a set
-        # Loop through the set and set all positions nearby as walls using set_from_pos (or you can alternatively set it as update tile detects if it is a launcher)
-        # If path finder can't find a path (Returns None) yet there is a target (current_target_position is not None) then:
-        # Place a launcher (if possible) - if not then... uhh
-        # Set target to the launcher
-        # In launcher script, identify the target using the same logic (thus it should identify the same target as the bot, if not its fine as it is still "a" target)
-        # Launch set bot to the target
-        
-        # Add if you have time:
-        # If the launcher doesn't launch myself for more than 3 rounds in a row (meaning there is not targets nearby), destroy the launcher
-        # This is because we blindly path find to a bot launcher trusting that it has a target
-
-        # 1: Loop through enemy launchers and mark nearby tiles as walls
-        # for launcher_pos in self.enemy_launchers:
-        #     print(launcher_pos)
-        #     for dx in range(-1, 2):
-        #         for dy in range(-1, 2):
-        #             if dx * dx + dy * dy <= TURRET_THREAT_RADIUS:
-        #                 wall_pos = Position(launcher_pos.x + dx, launcher_pos.y + dy)
-        #                 if is_in_bound(wall_pos, self.ct):
-        #                     self.set_from_pos(self.internal_map, wall_pos, Environment.WALL)
-                        
-        #                     if self.distance_map and wall_pos in self.distance_map and wall_pos != self.current_target_position:
-        #                         print(f"Encountered wall in path on position: {wall_pos}")
-        #                         self.distance_map = None
 
         # 2: Pick best target if not already hunting
         if self.current_state != BotState.GOING_TO_TARGET:
@@ -87,37 +52,31 @@ class Aggressor(Bot):
                 _, best_target = max(self.aggression_targets)
                 self.set_target(best_target, 0, BotState.GOING_TO_TARGET)
 
-    def update_tile(self, tile: Position, building_id: int | None, bot_id: int | None):
-        etype = self.ct.get_entity_type(building_id) if building_id else None
-
+    def update_tile(self, tile: Position, tile_data: TileData):
         if self.current_state == BotState.GOING_TO_TARGET and tile == self.current_target_position:
-            if bot_id and bot_id != self.ct.get_id() and self.ct.get_team(bot_id) == self.team:
+            if tile_data.bot_id and tile_data.bot_id != self.id:
                 self.set_wandering()
             
-            if self.ct.is_tile_empty(tile) or is_team_road(tile, self.ct):
+            if tile_data.building_id is None or tile_data.is_team_road():
                 self.target_distance_squared = 2
                 self.distance_map = None
-            elif building_id and etype not in PASSABLE:
-                # Don't wander off if this is our own launcher we're trying to use
-                if etype == EntityType.LAUNCHER and self.ct.get_team(building_id) == self.team:
-                    pass
-                else:
+            else:
+                self.target_distance_squared = 0
+                self.distance_map = None
+
+            if tile_data.building_type not in PASSABLE:
+                if not (tile_data.building_type == EntityType.LAUNCHER and tile_data.own_team):
                     self.set_wandering()
     
-        if building_id is None or (bot_id and bot_id != self.ct.get_id() and self.ct.get_team(bot_id) == self.team):
+        if tile_data.building_id is None or (tile_data.bot_id and tile_data.bot_id != self.id):
             return
         
-        same_team = self.team == self.ct.get_team(building_id)
-        if not same_team:
-            if etype in TURRETS:
-                self.turrets_in_range.append((tile, etype, self.ct.get_direction(building_id)))
+        if tile_data.own_team == False: # Needed cause None is also false
+            if tile_data.building_type in TURRETS:
+                self.turrets_in_range.append((tile, tile_data.building_type, self.ct.get_direction(tile_data.building_id)))
             else:
-                self.evaluate_aggressor_target(tile, building_id, bot_id, etype)
-        elif etype == EntityType.LAUNCHER and not (
-            check_for_entity(tile, self.ct, DIRECTIONS, EntityType.CONVEYOR, self.team) or \
-            check_for_entity(tile, self.ct, DIRECTIONS, EntityType.SPLITTER, self.team) or \
-            check_for_entity(tile, self.ct, DIRECTIONS, EntityType.BRIDGE, self.team)
-        ):
+                self.evaluate_aggressor_target(tile, tile_data)
+        elif tile_data.building_type == EntityType.LAUNCHER:
             self.allied_launchers.add(tile)
         
     def unreachable_path(self):
@@ -125,17 +84,13 @@ class Aggressor(Bot):
             return super().unreachable_path()
         # Check if we already have a launcher built
         if self.own_launcher_pos is not None:
-            own_launcher_id = False
-            if checkable_position(self.own_launcher_pos, self.ct):
-                own_launcher_id = self.ct.get_tile_building_id(self.own_launcher_pos)
-            
-                own_launcher_exists = (
-                    own_launcher_id and
-                    self.ct.get_entity_type(own_launcher_id) == EntityType.LAUNCHER and
-                    self.ct.get_team(own_launcher_id) == self.team
-                )
-            else:
-                own_launcher_exists = True
+            own_launcher_data = self.get_from_pos(self.own_launcher_pos)
+
+            own_launcher_exists = (
+                own_launcher_data and
+                own_launcher_data.building_type == EntityType.LAUNCHER and
+                own_launcher_data.own_team
+            )
 
 
             if not own_launcher_exists:
@@ -163,13 +118,12 @@ class Aggressor(Bot):
 
     def reached_target(self):
         if self.current_state == BotState.WANDERING:
-            self.set_target(self.nearest_unexplored(), 16, BotState.WANDERING)
+            self.set_wandering()
             return
         
-        building_id = self.ct.get_tile_building_id(self.current_target_position)
-        target_entity = self.ct.get_entity_type(building_id) if building_id else None
+        target_data = self.get_from_pos(self.current_target_position)
         
-        if target_entity == EntityType.LAUNCHER:
+        if target_data.building_type == EntityType.LAUNCHER:
             
             if self.rounds_without_launch >= 3:
                 if self.ct.can_destroy(self.own_launcher_pos):
@@ -179,17 +133,14 @@ class Aggressor(Bot):
                 return
 
             self.rounds_without_launch += 1
-            self.listening = True
 
         if not is_valid_target(self.current_target_position, self.ct):
             print(f"Target is invalid {self.current_target_position}")
-            self.set_target(self.nearest_unexplored(), 16, BotState.WANDERING)
+            self.set_wandering()
             return            
 
-        same_team = building_id and self.ct.get_team(building_id) == self.team
-        p = self.ct.get_position()
-        if self.ct.can_fire(p) and not same_team:
-            self.ct.fire(p)
+        if self.ct.can_fire(self.current_target_position) and not target_data.own_team:
+            self.ct.fire(self.current_target_position)
 
         to_build = EntityType.SENTINEL
         
@@ -236,12 +187,11 @@ class Aggressor(Bot):
                 check_pos = tile.add(d)
                 if not checkable_position(check_pos, self.ct):
                     continue
-                b_entity = get_entity(check_pos, self.ct)
-                bot_id = self.ct.get_tile_builder_bot_id(check_pos)
-                if bot_id and bot_id != self.ct.get_id():
+                tile_data = self.get_from_pos(check_pos)
+                if tile_data.bot_id and tile_data.bot_id != self.id:
                     continue
-                if self.ct.get_tile_env(check_pos) != Environment.WALL and (b_entity in IGNORED_BUILDINGS or b_entity == EntityType.ROAD):
-                    self.aggression_targets.append((100, check_pos))
+                if tile_data.environment != Environment.WALL and (tile_data.building_type in IGNORED_BUILDINGS or tile_data.building_type == EntityType.ROAD):
+                    self.aggression_targets.append((100, check_pos, tile_data))
                 # elif b_entity in PASSABLE and b_entity != EntityType.CORE:
                 #     self.aggression_targets.append((50, check_pos))
 

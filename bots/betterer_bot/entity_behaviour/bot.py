@@ -4,6 +4,7 @@ from utils.constants import *
 from utils.path_finder import *
 from utils.helper_functions import *
 from utils.tile_info import TileData
+import math
 import random
 
 from itertools import product
@@ -93,7 +94,9 @@ class Bot(EBase):
             if building_entity == EntityType.LAUNCHER and not same_team:
                 self.enemy_launchers.add(tile)
                 
+            print(f"Time before update tile: {self.ct.get_cpu_time_elapsed()}")
             self.update_tile(t, tile)
+            print(f"Time after update tile: {self.ct.get_cpu_time_elapsed()}")
             if not ((tile.passable() or tile.bot_id == self.id) or (t == self.current_target_position and tile.destroyable())) and self.distance_map and t in self.distance_map:
                 print(f"Encountered wall at {t}")
                 print(tile.building_type)
@@ -101,6 +104,17 @@ class Bot(EBase):
                 self.distance_map = None
 
             self.unexplored.discard(t)
+            bucket_key = (t.x // self.bucket_size, t.y // self.bucket_size)
+            bucket_list = self.buckets.get(bucket_key)
+            if bucket_list:
+                try:
+                    i = bucket_list.index(t)
+                    bucket_list[i] = bucket_list[-1]
+                    bucket_list.pop()
+                except ValueError:
+                    pass
+                if not bucket_list:
+                    del self.buckets[bucket_key]
             
         for launcher_pos in self.enemy_launchers:
             for dx, dy in product(range(-1,2), repeat=2):
@@ -196,7 +210,32 @@ class Bot(EBase):
     def nearest_unexplored(self) -> Position | None:
         # best_tile = min(self.unexplored, key=lambda t: self.score_tile(t), default=None)
         # return best_tile
-        return Position(random.randint(0, self.map_width - 1), random.randint(0, self.map_height - 1))
+        # return Position(random.randint(0, self.map_width - 1), random.randint(0, self.map_height - 1))
+        
+        if not self.buckets:
+            return Position(random.randint(0, self.map_width - 1), random.randint(0, self.map_height - 1))
+
+        bx, by = self.position.x // self.bucket_size, self.position.y // self.bucket_size
+
+        # Find the closest bucket by Chebyshev distance, break ties randomly
+
+        # best_bucket = min(
+        #     self.buckets.keys(),
+        #     key=lambda b: (max(abs(b[0] - bx), abs(b[1] - by)), random.random())
+        # )
+        best_bucket = min(
+            self.buckets.keys(),
+            key=lambda b: (self.score_tile(Position(
+                b[0] * self.bucket_size + self.bucket_size // 2,
+                b[1] * self.bucket_size + self.bucket_size // 2
+            )), random.random())
+        )
+
+        return min_with_random_tiebreak(
+            self.buckets[best_bucket],
+            key=lambda c: self.position.distance_squared(c)
+        )
+
     
     def update_tile(self, tile: Position, tile_data: TileData):
         pass

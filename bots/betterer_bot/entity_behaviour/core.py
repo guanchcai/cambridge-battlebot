@@ -12,17 +12,17 @@ class Core(EBase):
         self.no_bot_counter = 0
     
     def run_tick(self, ct: Controller):
-        # bot_count = 0
-        # for bot in ct.get_nearby_units(8):
-        #     if ct.get_entity_type(bot) == EntityType.BUILDER_BOT and ct.get_team(bot) == self.team:
-        #         bot_count += 1
+        bot_count = 0
+        for bot in ct.get_nearby_units(8):
+            if ct.get_entity_type(bot) == EntityType.BUILDER_BOT and ct.get_team(bot) == self.team:
+                bot_count += 1
 
-        # if bot_count < 2:
-        #     self.no_bot_counter += 1
+        if bot_count < 2:
+            self.no_bot_counter += 1
 
-        # if self.no_bot_counter >= 5:
-        #     self.spawn_queue.append(Direction.EAST)
-        #     self.no_bot_counter = 0
+        if self.no_bot_counter >= 5:
+            self.spawn_queue.append(Direction.EAST)
+            self.no_bot_counter = 0
 
         if self.spawn_queue:
             spawn_dir = self.spawn_queue[0]
@@ -45,11 +45,11 @@ class Core(EBase):
         if c_r == 100:
             self.spawn_queue.append(Direction.NORTH)
 
-        # if c_r % self.multiplier == self.multiplier - 1:
-        #     self.multiplier = max(10 , self.multiplier - 20)
-        #     self.spawn_queue.append(Direction.WEST)
+        if c_r % self.multiplier == self.multiplier - 1:
+            self.multiplier = max(10 , self.multiplier - 20)
+            self.spawn_queue.append(Direction.WEST)
 
-        # try:
-        #     ct.get_position(self.builder_id)
-        # except Exception: # need to make a new builder
-        #     self.spawn_queue.append(Direction.CENTRE)
+        try:
+            ct.get_position(self.builder_id)
+        except Exception: # need to make a new builder
+            self.spawn_queue.append(Direction.CENTRE)
