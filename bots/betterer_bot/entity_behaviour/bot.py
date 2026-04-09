@@ -92,7 +92,7 @@ class Bot(EBase):
             self.set_from_pos(t, tile)
 
             if building_entity == EntityType.LAUNCHER and not same_team:
-                self.enemy_launchers.add(tile)
+                self.enemy_launchers.add(t)
                 
             print(f"Time before update tile: {self.ct.get_cpu_time_elapsed()}")
             self.update_tile(t, tile)

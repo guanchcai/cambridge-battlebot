@@ -77,11 +77,6 @@ class Repairer(Bot):
                 turret_tile_data = self.get_from_pos(c_target)
                 if turret_tile_data and turret_tile_data.building_type in TURRETS and not turret_tile_data.own_team:
                     targeted_enemy_turret = True
-                # turret_id = self.ct.get_tile_building_id(c_target)
-                # if turret_id:
-                #     turret_type = self.ct.get_entity_type(turret_id)
-                #     if turret_type in TURRETS and self.ct.get_team(turret_id) == self.team:
-                #         targeted_enemy_turret = True
 
             if targeted_enemy_turret:
                 self.repair_targets.append((tile, 0))
@@ -100,31 +95,58 @@ class Repairer(Bot):
                 self.visiting_queue.discard(tile)
                 self.visited_conveyors.add(tile)
 
+            # valid repair target section ------------------------------------------------------------------------------------------
+            is_valid_repair_target = False
+
             if tile == self.current_target_position and self.current_state == BotState.GOING_TO_TARGET:
                 is_valid_repair_target = False
 
-                # is damaged
-                if self.ct.get_hp(tile_data.building_id) != self.ct.get_max_hp(tile_data.building_id):
+                if damaged or targeted_enemy_turret:
                     is_valid_repair_target = True
 
-                # conveyor sending stuff to enemy
-                if not is_valid_repair_target:
-                    if conveyor_target and checkable_position(c_target, self.ct):
-                        c_target_data = self.get_from_pos(conveyor_target)
-                        if c_target_data:
-                            if not c_target_data.own_team and c_target_data in VALUABLE_ENEMY_ENTITIES:
-                                is_valid_repair_target = True
-                            elif c_target_data.building_type in IGNORED_BUILDINGS or c_target_data.building_type == EntityType.ROAD:
-                                is_valid_repair_target = True
+                # conveyor pointing at a valuable own-team building
+                if not is_valid_repair_target and etype != EntityType.SPLITTER and conveyor_target and checkable_position(conveyor_target, self.ct):
+                    conveyor_target_tile_data = self.get_from_pos(conveyor_target)
+                    if conveyor_target_tile_data and conveyor_target_tile_data.own_team and \
+                    conveyor_target_tile_data.building_type not in VALUABLE_ENEMY_ENTITIES:
+                        is_valid_repair_target = True
 
+                # conveyor sending stuff to enemy valuable entity
+                if not is_valid_repair_target and conveyor_target and checkable_position(conveyor_target, self.ct):
+                    c_target_data = self.get_from_pos(conveyor_target)
+                    if c_target_data:
+                        if not c_target_data.own_team and c_target_data.building_type in VALUABLE_ENEMY_ENTITIES:
+                            is_valid_repair_target = True
+
+                # don't repair if another own bot is already on it
                 if tile_data.bot_id and tile_data.own_team and tile_data.bot_id != self.id:
-                    is_valid_repair_target = False # Not ideal TODO
+                    is_valid_repair_target = False
 
-                if not(
-                    self.ct.get_hp(tile_data.building_id) != self.ct.get_max_hp(tile_data.building_id) or \
-                    is_valid_repair_target
-                ):
+                if not is_valid_repair_target:
                     self.set_wandering()
+
+            # if tile == self.current_target_position and self.current_state == BotState.GOING_TO_TARGET:
+            #     if damaged:
+            #         is_valid_repair_target = True
+
+            #     # conveyor sending stuff to enemy
+            #     if not is_valid_repair_target:
+            #         if conveyor_target and checkable_position(c_target, self.ct):
+            #             c_target_data = self.get_from_pos(conveyor_target)
+            #             if c_target_data:
+            #                 if not c_target_data.own_team and c_target_data in VALUABLE_ENEMY_ENTITIES:
+            #                     is_valid_repair_target = True
+            #                 elif c_target_data.building_type in IGNORED_BUILDINGS or c_target_data.building_type == EntityType.ROAD:
+            #                     is_valid_repair_target = True
+
+            #     if tile_data.bot_id and tile_data.own_team and tile_data.bot_id != self.id:
+            #         is_valid_repair_target = False # Not ideal TODO
+
+            #     if not(
+            #         self.ct.get_hp(tile_data.building_id) != self.ct.get_max_hp(tile_data.building_id) or \
+            #         is_valid_repair_target
+            #     ):
+            #         self.set_wandering()
 
     def nearest_unexplored(self) -> Position | None:
         position = self.ct.get_position()
