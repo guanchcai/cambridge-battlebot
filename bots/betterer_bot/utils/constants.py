@@ -23,7 +23,7 @@ ORE_SITES = {Environment.ORE_TITANIUM, Environment.ORE_AXIONITE}
 CONVEYORS = {EntityType.BRIDGE, EntityType.CONVEYOR, EntityType.ARMOURED_CONVEYOR, EntityType.SPLITTER}
 CONVEYORS_WITHOUT_SPLITTER = {EntityType.CONVEYOR, EntityType.BRIDGE, EntityType.ARMOURED_CONVEYOR}
 INVALID_CONTAINERS = {EntityType.MARKER, EntityType.ROAD, None}
-DESTROYABLE_BUILDINGS = {EntityType.ROAD, EntityType.BARRIER}
+DESTROYABLE_BUILDINGS = {EntityType.BARRIER}
 STUCK_THRESHHOLD = 3
 TURRETS = {EntityType.SENTINEL, EntityType.GUNNER, EntityType.BREACH}
 IGNORED_BUILDINGS = {EntityType.MARKER, None}
@@ -41,7 +41,7 @@ DIAGONAL_DELTAS = [
     (-1, 1, 1.1)
 ]
 ALL_DELTAS = CARDINAL_DELTAS + DIAGONAL_DELTAS
-BRIDGE_PENALTY = 5
+BRIDGE_PENALTY = 4
 BRIDGE_DELTAS = [(dx, dy, (BRIDGE_PENALTY if dx*dx + dy*dy != 1 else 1)) for dx in range(-3, 4) for dy in range(-3, 4) if 0 < dx*dx + dy*dy <= 9]
 
 class BotState(Enum):
@@ -65,4 +65,4 @@ class TargetTypes(Enum):
 TURRET_THREAT_RADIUS = 2
 _SENTINEL = object()
 
-SENTINEL_RANGE = 32 # 5 ** 2
+SENTINEL_RANGE = 26 # 5 ** 2

@@ -1,3 +1,4 @@
+from utils.tile_info import TileData
 from entity_behaviour.bot import Bot
 from utils.constants import *
 from utils.helper_functions import *
@@ -29,17 +30,16 @@ class Repairer(Bot):
         if self.current_state != BotState.GOING_BACK:
             return super().build_road(move_pos, next_pos)
         
-        current_tile_id = self.ct.get_tile_building_id(self.position)
-        same_team = current_tile_id and self.ct.get_team(current_tile_id) == self.ct.get_team()
-        if self.ct.can_fire(self.position) and not same_team:
-            self.ct.fire(self.position)
-            
-        current_tile_entity = get_entity(self.position, self.ct)
+        tile_data = self.get_from_pos(self.position)
         
-        if current_tile_id and not same_team:
+        if self.ct.can_fire(self.position) and not tile_data.own_team:
+            self.ct.fire(self.position)
+        
+        if tile_data.building_id and not tile_data.own_team:
             return False
 
-        if (current_tile_entity is None or is_team_road(self.position, self.ct)) and self.ct.get_tile_env(self.position) not in ORE_SITES:
+        if (tile_data.building_type is None or tile_data.is_team_road()) and \
+           self.ct.get_tile_env(self.position) not in ORE_SITES:
             self.build_conveyor_chain(self.position, move_pos)
             return False
         elif next_pos:
@@ -56,32 +56,46 @@ class Repairer(Bot):
                 target = min(self.repair_targets, key=lambda p: self.base_position.distance_squared(p[0]))
                 self.set_target(target[0], target[1], BotState.GOING_TO_TARGET)
 
-    def update_tile(self, tile: Position, building_id: int | None, bot_id: int | None):
-        if building_id is None:
-            return
-        
-        if bot_id and self.ct.get_team(bot_id) == self.ct.get_team():
+    def update_tile(self, tile: Position, tile_data: TileData | None):
+        if tile_data is None: return
+
+        if tile_data.bot_id and self.ct.get_team(tile_data.bot_id) == self.team:
             return
                 
-        etype = self.ct.get_entity_type(building_id)
-        same_team = self.team == self.ct.get_team(building_id)
+        etype = tile_data.building_type
         conveyor_target = get_conveyor_target(tile, self.ct)
-        if etype in CONVEYORS and same_team:
-            damaged = self.ct.get_hp(building_id) != self.ct.get_max_hp(building_id)
+         
+        if etype in CONVEYORS and tile_data.own_team:
+            damaged = self.ct.get_hp(tile_data.building_id) != self.ct.get_max_hp(tile_data.building_id)
             if damaged:
                 self.repair_targets.append((tile, 2))
-            elif not is_bot_nearby(tile, self.ct):
-                if is_directly_connected_to_turret(tile, other_team(self.team), self.ct):
+
+            targeted_enemy_turret = False
+            c_target = get_conveyor_target(pos, self.ct)
+            if c_target and checkable_position(c_target, self.ct):
+                turret_tile_data = self.get_from_pos(c_target)
+                if turret_tile_data and turret_tile_data.building_type in TURRETS and turret_tile_data.own_team:
+                    targeted_enemy_turret = True
+                # turret_id = self.ct.get_tile_building_id(c_target)
+                # if turret_id:
+                #     turret_type = self.ct.get_entity_type(turret_id)
+                #     if turret_type in TURRETS and self.ct.get_team(turret_id) == self.team:
+                #         targeted_enemy_turret = True
+
+            if targeted_enemy_turret:
+                self.repair_targets.append((tile, 0))
+            elif etype != EntityType.SPLITTER and conveyor_target and checkable_position(conveyor_target, self.ct):
+                conveyor_target_tile_data = self.get_from_pos(conveyor_target)
+                if conveyor_target_tile_data.own_team and conveyor_target_tile_data.building_type in VALUABLE_ENEMY_ENTITIES:
                     self.repair_targets.append((tile, 0))
-                elif etype != EntityType.SPLITTER and conveyor_target and checkable_position(conveyor_target, self.ct) and get_entity(conveyor_target, self.ct) in IGNORED_BUILDINGS:
-                    self.repair_targets.append((tile, 0))
+
             if tile not in self.visited_conveyors:
                 self.visiting_queue.add(tile)
 
             if tile == self.current_target_position and self.current_state == BotState.GOING_TO_TARGET:
                 if not(
-                    self.ct.get_hp(building_id) != self.ct.get_max_hp(building_id) or \
-                    is_valid_repair_target(tile, self.ct)
+                    self.ct.get_hp(tile_data.building_id) != self.ct.get_max_hp(tile_data.building_id) or \
+                    is_valid_repair_target(tile, self.ct) # TODO
                 ):
                     self.set_wandering()
 
@@ -139,42 +153,70 @@ class Repairer(Bot):
         )
 
     def build_conveyor_chain(self, from_pos: Position, to_pos: Position, connect_next=True):
-        if self.ct.can_destroy(from_pos) and is_team_road(from_pos, self.ct):
-            self.ct.destroy(from_pos)
+        # if self.ct.can_destroy(from_pos) and is_team_road(from_pos, self.ct):
+        #     self.ct.destroy(from_pos)
 
-        bridge_target_pos_choices = get_positions_of_entities(from_pos, self.ct, 9, EntityType.SPLITTER, self.ct.get_team())
+        # bridge_target_pos_choices = get_positions_of_entities(from_pos, self.ct, 9, EntityType.SPLITTER, self.ct.get_team())
         
-        if bridge_target_pos_choices and self.ct.get_tile_env(from_pos) not in ORE_SITES:
-            bridge_target_pos = random.choice(bridge_target_pos_choices)
-            to_pos = bridge_target_pos
-        elif from_pos.distance_squared(self.base_position) <= BASE_DIST and not bridge_target_pos_choices:
-            if self.ct.can_build_bridge(from_pos, to_pos):
-                self.ct.build_bridge(from_pos, to_pos)
+        # if bridge_target_pos_choices and self.ct.get_tile_env(from_pos) not in ORE_SITES:
+        #     bridge_target_pos = random.choice(bridge_target_pos_choices)
+        #     to_pos = bridge_target_pos
+        # elif from_pos.distance_squared(self.base_position) <= BASE_DIST and not bridge_target_pos_choices:
+        #     if self.ct.can_build_bridge(from_pos, to_pos):
+        #         self.ct.build_bridge(from_pos, to_pos)
                 
 
-        print(f"Building conveyor chain from {from_pos} to {to_pos}")
+        # print(f"Building conveyor chain from {from_pos} to {to_pos}")
+        # if self.position.distance_squared(from_pos) > 1:
+        #     print("Too far away!")
+        #     self.set_target(from_pos, 0, BotState.GOING_TO_TARGET)
+        #     return
+
+        # building_id = self.ct.get_tile_building_id(from_pos)
+        # building_type = self.ct.get_entity_type(building_id) if building_id else None
+        # same_team = building_id and self.ct.get_team(building_id) == self.ct.get_team()
+        
+        # if same_team and building_type in CONVEYORS:
+        #     return
+
+        # if from_pos.distance_squared(to_pos) > 1 or get_skibidi_distance(to_pos, self.base_position) == 2:
+        #     if self.ct.can_build_bridge(from_pos, to_pos):
+        #         self.ct.build_bridge(from_pos, to_pos)
+
+        #         if connect_next:
+        #             self.set_target(to_pos, 0, BotState.GOING_TO_TARGET)
+        # elif from_pos.distance_squared(to_pos) == 1 and self.ct.can_build_conveyor(from_pos, from_pos.direction_to(to_pos)):
+        #     bot_id = self.ct.get_tile_builder_bot_id(from_pos)
+        #     if not bot_id:
+        #         self.ct.build_conveyor(from_pos, from_pos.direction_to(to_pos))
+
+        from_data = self.get_from_pos(from_pos)
+        if self.ct.can_destroy(from_pos) and from_data.destroyable():
+            self.ct.destroy(from_pos)
+
+        bridge_target_pos_choices = self.get_positions_of_entities(from_pos, 9, EntityType.SPLITTER, self.team)
+        
+        if bridge_target_pos_choices:
+            bridge_target_pos = random.choice(bridge_target_pos_choices)
+            if self.ct.can_build_bridge(from_pos, bridge_target_pos):
+                self.ct.build_bridge(from_pos, bridge_target_pos)
+                return
+        elif from_pos.distance_squared(self.base_position) <= BASE_DIST:
+            if self.ct.can_build_bridge(from_pos, self.base_position):
+                self.ct.build_bridge(from_pos, self.base_position)
+                return
+
         if self.position.distance_squared(from_pos) > 1:
-            print("Too far away!")
             self.set_target(from_pos, 0, BotState.GOING_TO_TARGET)
             return
-
-        building_id = self.ct.get_tile_building_id(from_pos)
-        building_type = self.ct.get_entity_type(building_id) if building_id else None
-        same_team = building_id and self.ct.get_team(building_id) == self.ct.get_team()
         
-        if same_team and building_type in CONVEYORS:
-            return
-
+        dir = from_pos.direction_to(to_pos)
         if from_pos.distance_squared(to_pos) > 1 or get_skibidi_distance(to_pos, self.base_position) == 2:
             if self.ct.can_build_bridge(from_pos, to_pos):
                 self.ct.build_bridge(from_pos, to_pos)
-
-                if connect_next:
-                    self.set_target(to_pos, 0, BotState.GOING_TO_TARGET)
-        elif from_pos.distance_squared(to_pos) == 1 and self.ct.can_build_conveyor(from_pos, from_pos.direction_to(to_pos)):
-            bot_id = self.ct.get_tile_builder_bot_id(from_pos)
-            if not bot_id:
-                self.ct.build_conveyor(from_pos, from_pos.direction_to(to_pos))
+        elif from_pos.distance_squared(to_pos) == 1 and self.ct.can_build_conveyor(from_pos, dir):
+            if not from_data.bot_id or from_data.bot_id == self.id:
+                self.ct.build_conveyor(from_pos, dir)
     
     def run_flood_fill(self):
         match self.current_state:

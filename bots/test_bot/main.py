@@ -27,25 +27,32 @@ class Player:
         self.placement_queue = [None, None, None, None, None, None, (EntityType.HARVESTER, Direction.SOUTH), None, (EntityType.SENTINEL, Direction.SOUTH)]
 
     def run(self, ct: Controller) -> None:
-        return
-        etype = ct.get_entity_type()
-        if etype == EntityType.CORE:
-            if self.num_spawned < 1:
-                # if we haven't spawned 3 builder bots yet, try to spawn one on a random tile
-                spawn_pos = ct.get_position().add(Direction.WEST)
-                if ct.can_spawn(spawn_pos):
-                    ct.spawn_builder(spawn_pos)
-                    self.num_spawned += 1
-        elif etype == EntityType.BUILDER_BOT:
-            movement = self.movement_queue.pop(0)
-            if movement:
-                ct.build_road(ct.get_position().add(movement))
-                ct.move(movement)
-            placement = self.placement_queue.pop(0)
-            if not placement: return
-            match placement[0]:
-                case EntityType.HARVESTER:
-                    ct.build_harvester(ct.get_position().add(placement[1]))
-                case EntityType.SENTINEL:
-                    ct.build_sentinel(ct.get_position().add(placement[1]), Direction.NORTH)
+        seen_tiles = []
+        print(ct.get_cpu_time_elapsed())
+        ran = ct.get_vision_radius_sq()
+        ran_root = int(ran ** 0.5)
+        prntstmt = ""
+        match ct.get_current_round() % 5:
+            case 0:
+                for tile in ct.get_nearby_tiles():
+                    seen_tiles.append(tile)
+                prntstmt = "nearby tiles"
+            case 1:
+                for tile in ct.get_nearby_entities():
+                    seen_tiles.append(tile)
+                prntstmt = "nearby entities"
+            case 2:
+                for tile in ct.get_nearby_buildings():
+                    seen_tiles.append(tile)
+                prntstmt = "nearby buildings"
+            case 3:
+                for tile in ct.get_nearby_units():
+                    seen_tiles.append(tile)
+                prntstmt = "nearby units"
+            case 4:
+                for i in range(-ran_root, ran_root + 1):
+                    for j in range(-ran_root, ran_root + 1):
+                        seen_tiles.append((i, j))
+        print(prntstmt)
+        print(ct.get_cpu_time_elapsed())
 

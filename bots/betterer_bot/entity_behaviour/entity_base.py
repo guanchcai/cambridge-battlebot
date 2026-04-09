@@ -8,6 +8,7 @@ class EBase(ABC):
         self.team = ct.get_team()
         self.map_width = ct.get_map_width()
         self.map_height = ct.get_map_height()
+        self.id = ct.get_id()
 
     @abstractmethod
     def run_tick(self, ct: Controller):
