@@ -360,3 +360,14 @@ class Bot(EBase):
                 if tile_data and tile_data.building_type == entity_type and tile_data.own_team:
                     results.append(pos)
         return results
+
+    def check_for_entity(self, position: Position, directions: list, entity: EntityType, team) -> Position | None:
+        for d in directions:
+            check_pos = position.add(d)
+            if not checkable_position(check_pos, self.ct):
+                continue
+            tile_data = self.get_from_pos(check_pos)
+            if tile_data and tile_data.building_type == entity:
+                if tile_data.own_team == (team == self.team):
+                    return check_pos
+        return None
