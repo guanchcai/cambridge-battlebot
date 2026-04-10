@@ -280,7 +280,7 @@ class Aggressor(Bot):
     def handle_thrown(self):
         print("yo???")
         self.rounds_without_launch = 0
-        if is_valid_target(self.position, self.ct):
+        if self.is_valid_target(self.position):
             self.set_target(self.position, 0, BotState.GOING_TO_TARGET)
             self.reached_target()
 
@@ -334,6 +334,30 @@ class Aggressor(Bot):
         avg_x = sum(p.x for p in candidates) // len(candidates)
         avg_y = sum(p.y for p in candidates) // len(candidates)
         return Position(avg_x, avg_y)
+
+    def is_valid_target(self, pos: Position) -> bool:
+        tile_data = self.get_from_pos(pos)
+        if tile_data is None:
+            return False
+        etype = tile_data.building_type
+        if etype in CONVEYORS and not tile_data.own_team:
+            return True
+        if etype == EntityType.LAUNCHER and tile_data.own_team:
+            return True
+        if etype in IGNORED_BUILDINGS or etype == EntityType.ROAD:
+            for d in BRIDGE_DELTAS:
+                check_pos = Position(pos.x + d[0], pos.y + d[1])
+                if not checkable_position(check_pos, self.ct):
+                    continue
+                check_data = self.get_from_pos(check_pos)
+                if check_data is None:
+                    continue
+                if get_conveyor_target(check_pos, self.ct) == pos:
+                    return True
+                if d in CARDINAL_DELTAS and check_data.building_type == EntityType.HARVESTER:
+                    return True
+        return False
+    
 """
                                -=::.         . .         ..                     .                     ............:::::::.........
                       -+=-:::-+:                                                                       ...........................
