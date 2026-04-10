@@ -7,6 +7,7 @@ from utils.helper_functions import *
 class Gatherer(Bot):
     def __init__(self, ct: Controller):
         self.harvester_count = 0
+        self.titanium_harvester_count = 0
 
         self.axionite_ore_sites = set()
 
@@ -80,6 +81,7 @@ class Gatherer(Bot):
                     self.current_target_position,
                     True, 
                     DeltaTypes.BRIDGE, 
+                    self.ct,
                     0, 
                     True
                 )
@@ -89,6 +91,7 @@ class Gatherer(Bot):
                     self.current_target_position,
                     True, 
                     DeltaTypes.ALL, 
+                    self.ct,
                     self.target_distance_squared,
                     False
                 )
@@ -98,6 +101,7 @@ class Gatherer(Bot):
                     self.current_target_position,
                     True, 
                     DeltaTypes.ALL, 
+                    self.ct,
                     self.target_distance_squared, 
                     True
                 )
@@ -161,7 +165,7 @@ class Gatherer(Bot):
     
     def nearest_unexplored(self):
         unvisited_ores = None
-        if self.harvester_count <= 1:
+        if self.harvester_count <= 1 or self.titanium_harvester_count <= 0.75 * self.harvester_count:
             unvisited_ores = self.ore_sites - self.visited_ore_sites
         else:
             unvisited_ores = self.ore_sites.union(self.axionite_ore_sites) - self.visited_ore_sites
@@ -208,11 +212,13 @@ class Gatherer(Bot):
 
         if bridge_target_pos_choices:
             bridge_target_pos = random.choice(bridge_target_pos_choices)
+            print(f"Trying to build bridge from {from_pos} to {bridge_target_pos}")
             if self.ct.can_build_bridge(from_pos, bridge_target_pos):
                 self.ct.build_bridge(from_pos, bridge_target_pos)
                 self.set_wandering()
             return
-        elif from_pos.distance_squared(self.base_position) <= BASE_DIST:
+        elif from_pos.distance_squared(self.base_position) <= 18:
+            print(f"Trying to build bridge from {from_pos} to {self.base_position}")
             if self.ct.can_build_bridge(from_pos, self.base_position):
                 self.ct.build_bridge(from_pos, self.base_position)
                 self.set_wandering()
@@ -257,6 +263,8 @@ class Gatherer(Bot):
             if self.ct.can_build_harvester(potential_harvester_pos):
                 self.ct.build_harvester(potential_harvester_pos)
                 self.harvester_count += 1
+                if tile_data.environment == Environment.ORE_TITANIUM:
+                    self.titanium_harvester_count += 1
             return True
             
 """

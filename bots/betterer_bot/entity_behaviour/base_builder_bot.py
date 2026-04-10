@@ -30,14 +30,16 @@ class BaseBuilder(Bot):
             elif entitytype == EntityType.SPLITTER and same_team:
                 if self.ct.get_stored_resource(tile_data.building_id) == ResourceType.TITANIUM:
                     target_pos = get_conveyor_target(tile, self.ct)
-                    target_entity = self.get_from_pos(target_pos).building_type
+                    target_entity = get_entity(target_pos, self.ct)
+                    print(f"target_entity: {target_entity} from barrier")
                     if target_entity == EntityType.BARRIER or target_entity in IGNORED_BUILDINGS or target_entity == EntityType.ROAD:
                         self.potential_targets.append(target_pos) 
                         
                 elif self.ct.get_stored_resource(tile_data.building_id) == ResourceType.RAW_AXIONITE:
                     target_pos = get_conveyor_target(tile, self.ct)
-                    target_entity = self.get_from_pos(target_pos).building_type
-                    if target_entity == EntityType.LAUNCHER and target_entity not in CONVEYORS:
+                    target_entity = get_entity(target_pos, self.ct)
+                    print(f"target_entity: {target_entity}")
+                    if target_entity == EntityType.LAUNCHER:
                         self.potential_targets.append(target_pos) 
 
     def update_map(self):
@@ -69,14 +71,13 @@ class BaseBuilder(Bot):
         self.distance_map = self.path_finder.run(
             self.position,
             self.current_target_position,
-            True, 
-            DeltaTypes.ALL, 
             self.target_distance_squared, 
-            True, 
-            True
+            self.ct,
+            False
         )
     
     def reached_target(self):
+        print("Reached target")
         del_x = abs(self.current_target_position.x - self.base_position.x)
         del_y = abs(self.current_target_position.y - self.base_position.y)
         tile_data = self.get_from_pos(self.current_target_position)
@@ -109,7 +110,7 @@ class BaseBuilder(Bot):
             elif e_type == EntityType.FOUNDRY:
                 self.set_wandering()
                 return
-            
+            print(f"Trying to build {to_build} at {self.current_target_position}")
             g_resource = self.ct.get_global_resources()[0]
             can_build = g_resource >= entity_cost and self.ct.get_action_cooldown() == 0
             if can_build and self.ct.can_destroy(self.current_target_position) and get_entity(self.current_target_position, self.ct) != to_build:

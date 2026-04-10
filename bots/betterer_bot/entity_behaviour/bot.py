@@ -1,7 +1,7 @@
 from entity_behaviour.entity_base import EBase
 from cambc import Controller, Position, Environment, EntityType
 from utils.constants import *
-from utils.path_finder import *
+from utils.path_finder_human import *
 from utils.helper_functions import *
 from utils.tile_info import TileData
 import math
@@ -14,7 +14,6 @@ class Bot(EBase):
         super().__init__(ct)
         self.base_position = ct.get_position(ct.get_tile_building_id(self.original_position))
         self.internal_map: list[TileData | None] = [None] * (self.map_width * self.map_height)
-        self.environment_map = [None] * (self.map_width * self.map_height)
 
         self.ore_sites = set()
         self.visited_ore_sites = set()
@@ -48,17 +47,17 @@ class Bot(EBase):
                 self.unexplored.add(p)
                 bucket = (x // self.bucket_size, y // self.bucket_size)
                 if bucket not in self.buckets:
-                    self.buckets[bucket] = []
-                self.buckets[bucket].append(p)
+                    self.buckets[bucket] = set()
+                self.buckets[bucket].add(p)
 
     def run_tick(self, ct: Controller):
         self.ct = ct
         self.position = ct.get_position()
+        self.update_map()
         print(f"开始计时 {ct.get_cpu_time_elapsed()}")
         self.move_to_pos()
         print(f"计时 ended {ct.get_cpu_time_elapsed()}")
         print(f"Time left to diddle {self.ct.get_cpu_time_elapsed()}")
-        self.update_map()
         if self.current_target_position:
             ct.draw_indicator_line(ct.get_position(), self.current_target_position, 255, 0, 0)
 
@@ -88,16 +87,15 @@ class Bot(EBase):
             
             if not self.enemy_base_pos and building_entity == EntityType.CORE and not same_team:
                 self.enemy_base_pos = self.ct.get_position(building_id)
-
+            
             self.set_from_pos(t, tile)
 
             if building_entity == EntityType.LAUNCHER and not same_team:
                 self.enemy_launchers.add(t)
                 
-            print(f"Time before update tile: {self.ct.get_cpu_time_elapsed()}")
             self.update_tile(t, tile)
-            print(f"Time after update tile: {self.ct.get_cpu_time_elapsed()}")
-            if not ((tile.passable() or tile.bot_id == self.id) or (t == self.current_target_position and tile.destroyable())) and self.distance_map and t in self.distance_map:
+
+            if not (tile.passable() or tile.bot_id == self.id or tile.destroyable()) and self.distance_map and t in self.distance_map and t != self.current_target_position:
                 print(f"Encountered wall at {t}")
                 print(tile.building_type)
                 print(self.get_from_pos(t).destroyable())
@@ -107,12 +105,7 @@ class Bot(EBase):
             bucket_key = (t.x // self.bucket_size, t.y // self.bucket_size)
             bucket_list = self.buckets.get(bucket_key)
             if bucket_list:
-                try:
-                    i = bucket_list.index(t)
-                    bucket_list[i] = bucket_list[-1]
-                    bucket_list.pop()
-                except ValueError:
-                    pass
+                bucket_list.discard(t)
                 if not bucket_list:
                     del self.buckets[bucket_key]
             
@@ -121,10 +114,10 @@ class Bot(EBase):
                 if dx * dx + dy * dy <= TURRET_THREAT_RADIUS:
                     wall_pos = Position(launcher_pos.x + dx, launcher_pos.y + dy)
                     if is_in_bound(wall_pos, self.ct):
-                        pos = self.get_from_pos(self.internal_map, wall_pos)
+                        pos = self.get_from_pos(wall_pos)
                         if pos is not None:
                             pos.covered_by_enemy = True
-                            if pos in self.distance_map:
+                            if self.distance_map and pos in self.distance_map:
                                 self.distance_map = None
 
     def move_to_pos(self):
@@ -141,6 +134,8 @@ class Bot(EBase):
         if not self.distance_map and self.current_target_position is not None:
             self.run_flood_fill()
         print(f"Path find ended at {self.ct.get_cpu_time_elapsed()}")
+        if self.distance_map:
+            print(f"Distance map: {self.distance_map._deque}")
         if self.distance_map is None:
             print(f"Can't reach Epstein's island at {self.current_target_position} from {self.position}")
             self.unreachable_path()
@@ -163,8 +158,8 @@ class Bot(EBase):
             self.ct.move(chosen)
             self.previous_position = self.position if self.previous_position != self.position else self.previous_position
         
-        tile_data = self.get_from_pos(self.position)
-        if self.ct.get_current_round() < 50 and tile_data and tile_data.is_team_road() and self.ct.can_destroy(self.position):
+        
+        if self.ct.get_current_round() < 50 and get_entity(self.position, self.ct) == EntityType.ROAD and self.ct.can_destroy(self.position):
             self.ct.destroy(self.position)
 
         new_pos = self.ct.get_position() 
@@ -185,20 +180,25 @@ class Bot(EBase):
     def unreachable_path(self):
         self.set_wandering()
 
-    def set_from_pos(self, pos: Position, value):
-        self.internal_map[pos.y * self.map_width + pos.x] = value
-
-    def get_from_pos(self, pos: Position) -> TileData | None:
-        return self.internal_map[pos.y * self.map_width + pos.x]
+    def set_from_pos(self, x_or_pos, y_or_value=None, value=None):
+        if isinstance(x_or_pos, Position):
+            self.internal_map[x_or_pos.y * self.map_width + x_or_pos.x] = y_or_value
+        else:
+            self.internal_map[y_or_value * self.map_width + x_or_pos] = value
+        
+    def get_from_pos(self, x_or_pos, y=None):
+        if isinstance(x_or_pos, Position):
+            return self.internal_map[x_or_pos.y * self.map_width + x_or_pos.x]
+        else:
+            return self.internal_map[y * self.map_width + x_or_pos]
 
     def run_flood_fill(self):
         print(f"Going from {self.position} to {self.current_target_position}")
         self.distance_map = self.path_finder.run(
             self.position,
             self.current_target_position,
-            True, 
-            DeltaTypes.ALL, 
-            self.target_distance_squared, 
+            self.target_distance_squared,
+            self.ct,
             False
         )
     
@@ -249,13 +249,16 @@ class Bot(EBase):
     
         w = self.map_width - 1
         h = self.map_height - 1
-        y_axis_reflection = Position(w - tile.x, tile.y)
-        x_axis_reflection = Position(tile.x, h - tile.y)
-        rotation_reflection = Position(w - tile.x, h - tile.y)
+        y_axis_reflection_x = w - tile.x
+        y_axis_reflection_y = tile.y
+        x_axis_reflection_x = tile.x
+        x_axis_reflection_y = h - tile.y
+        rotation_reflection_x = w - tile.x
+        rotation_reflection_y = h - tile.y
 
-        y_ref_tile = self.get_from_pos(y_axis_reflection)
-        x_ref_tile = self.get_from_pos(x_axis_reflection)
-        r_ref_tile = self.get_from_pos(rotation_reflection)
+        y_ref_tile = self.get_from_pos(y_axis_reflection_x, y_axis_reflection_y)
+        x_ref_tile = self.get_from_pos(x_axis_reflection_x, x_axis_reflection_y)
+        r_ref_tile = self.get_from_pos(rotation_reflection_x, rotation_reflection_y)
 
         if y_ref_tile and y_ref_tile.environment != tile_data.environment:
             self.y_axis_symmetry = False
@@ -284,21 +287,24 @@ class Bot(EBase):
         h = self.map_height - 1
         
         if self.y_axis_symmetry:
-            ref_tile = Position(w - tile.x, tile.y)
+            ref_tile_x = w - tile.x
+            ref_tile_y = tile.y
             self.enemy_base_pos = Position(w - self.base_position.x, self.base_position.y)
             
         if self.x_axis_symmetry:
-            ref_tile = Position(tile.x, h - tile.y)
+            ref_tile_x = tile.x
+            ref_tile_y = h - tile.y
             self.enemy_base_pos = Position(self.base_position.x, h - self.base_position.y)
             
         if self.rotational_symmetry:
-            ref_tile = Position(w - tile.x, h - tile.y)
+            ref_tile_x = w - tile.x
+            ref_tile_y = h - tile.y
             self.enemy_base_pos = Position(w - self.base_position.x, h - self.base_position.y)
         
-        if self.get_from_pos(ref_tile) is None:
+        if self.get_from_pos(ref_tile_x, ref_tile_y) is None:
             tile_data = TileData(tile_data.environment)
-            self.set_from_pos(ref_tile, tile_data)
-            self.update_tile(ref_tile, tile_data)
+            self.set_from_pos(ref_tile_x, ref_tile_y, tile_data)
+            self.update_tile(Position(ref_tile_x, ref_tile_y), tile_data)
 
     def set_target(self, target_pos: Position, distance_squared: int, state: BotState):
         self.current_target_position = target_pos
@@ -334,7 +340,7 @@ class Bot(EBase):
 
     def is_passable(self, tile: Position):
         if not checkable_position(tile, self.ct):
-            return False
+            return True
         to_check = self.get_from_pos(tile)
         return to_check is None or to_check.bot_id == self.id or to_check.passable() or to_check.destroyable()
         

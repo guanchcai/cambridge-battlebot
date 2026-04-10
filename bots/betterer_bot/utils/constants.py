@@ -29,20 +29,20 @@ TURRETS = {EntityType.SENTINEL, EntityType.GUNNER, EntityType.BREACH}
 IGNORED_BUILDINGS = {EntityType.MARKER, None}
 CAN_BUILD_OVER = {EntityType.MARKER, None, EntityType.ROAD}
 CARDINAL_DELTAS = [
-    (0, 1, 1), 
-    (0, -1, 1), 
-    (1, 0, 1), 
-    (-1, 0, 1)
+    (0, 1, 0), 
+    (0, -1, 0), 
+    (1, 0, 0), 
+    (-1, 0, 0)
 ]
 DIAGONAL_DELTAS = [
-    (1, 1, 1.1), 
-    (-1, -1, 1.1), 
-    (1, -1, 1.1), 
-    (-1, 1, 1.1)
+    (1, 1, 0.1), 
+    (-1, -1, 0.1), 
+    (1, -1, 0.1), 
+    (-1, 1, 0.1)
 ]
 ALL_DELTAS = CARDINAL_DELTAS + DIAGONAL_DELTAS
-BRIDGE_PENALTY = 5
-BRIDGE_DELTAS = [(dx, dy, (BRIDGE_PENALTY if dx*dx + dy*dy != 1 else 1)) for dx in range(-3, 4) for dy in range(-3, 4) if 0 < dx*dx + dy*dy <= 9]
+BRIDGE_PENALTY = 6
+BRIDGE_DELTAS = [(dx, dy, BRIDGE_PENALTY) for dx in range(-3, 4) for dy in range(-3, 4) if 1 < dx*dx + dy*dy <= 9]
 
 class BotState(Enum):
     GOING_TO_TARGET = 1
@@ -61,6 +61,7 @@ class TargetTypes(Enum):
     CONNECT_BRIDGE = 0
     BASE = 1
     ORE = 2
+    WANDER = 3
 
 TURRET_THREAT_RADIUS = 2
 _SENTINEL = object()

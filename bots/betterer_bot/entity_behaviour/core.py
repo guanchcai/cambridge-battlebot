@@ -38,8 +38,8 @@ class Core(EBase):
                     self.builder_id = id
 
         ti, ax = ct.get_global_resources()
-        if ct.get_current_round() < 1000:
-            ct.convert(ax)
+        if ct.get_current_round() < 1000 and ax > 1:
+            ct.convert(ax - 1)
         elif ax > ti // 3:
             ct.convert(ax - ti // 3)
 

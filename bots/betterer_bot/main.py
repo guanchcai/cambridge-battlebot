@@ -10,6 +10,7 @@ from entity_behaviour.repair_bot import Repairer
 from entity_behaviour.aggressor_bot import Aggressor
 from utils.helper_functions import get_entity
 from entity_behaviour.sentinel import Sentinel
+from entity_behaviour.logistics_bot import LogisticsBot
 
 class Player:
     def __init__(self):
@@ -35,9 +36,9 @@ class Player:
                 if p == base_position:
                     return BaseBuilder(ct)
                 if p.y < base_position.y:
-                    return Gatherer(ct)
+                    return LogisticsBot(ct)
                 if p.x > base_position.x:
-                    return Repairer(ct)
+                    return LogisticsBot(ct)
                 return Aggressor(ct)
             case EntityType.LAUNCHER:
                 return Launcher(ct)

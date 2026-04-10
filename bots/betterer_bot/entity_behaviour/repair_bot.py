@@ -66,8 +66,8 @@ class Repairer(Bot):
         etype = tile_data.building_type
         conveyor_target = get_conveyor_target(tile, self.ct)
          
+        damaged = self.ct.get_hp(tile_data.building_id) != self.ct.get_max_hp(tile_data.building_id)
         if etype in CONVEYORS and tile_data.own_team:
-            damaged = self.ct.get_hp(tile_data.building_id) != self.ct.get_max_hp(tile_data.building_id)
             if damaged:
                 self.repair_targets.append((tile, 2))
 
@@ -95,35 +95,35 @@ class Repairer(Bot):
                 self.visiting_queue.discard(tile)
                 self.visited_conveyors.add(tile)
 
-            # valid repair target section ------------------------------------------------------------------------------------------
+        # valid repair target section ------------------------------------------------------------------------------------------
+        is_valid_repair_target = False
+
+        if tile == self.current_target_position and self.current_state == BotState.GOING_TO_TARGET:
             is_valid_repair_target = False
 
-            if tile == self.current_target_position and self.current_state == BotState.GOING_TO_TARGET:
-                is_valid_repair_target = False
+            if damaged:
+                is_valid_repair_target = True
 
-                if damaged or targeted_enemy_turret:
+            # conveyor pointing at a valuable own-team building
+            if not is_valid_repair_target and etype != EntityType.SPLITTER and conveyor_target and checkable_position(conveyor_target, self.ct):
+                conveyor_target_tile_data = self.get_from_pos(conveyor_target)
+                if conveyor_target_tile_data and conveyor_target_tile_data.own_team and \
+                conveyor_target_tile_data.building_type not in VALUABLE_ENEMY_ENTITIES:
                     is_valid_repair_target = True
 
-                # conveyor pointing at a valuable own-team building
-                if not is_valid_repair_target and etype != EntityType.SPLITTER and conveyor_target and checkable_position(conveyor_target, self.ct):
-                    conveyor_target_tile_data = self.get_from_pos(conveyor_target)
-                    if conveyor_target_tile_data and conveyor_target_tile_data.own_team and \
-                    conveyor_target_tile_data.building_type not in VALUABLE_ENEMY_ENTITIES:
+            # conveyor sending stuff to enemy valuable entity
+            if not is_valid_repair_target and conveyor_target and checkable_position(conveyor_target, self.ct):
+                c_target_data = self.get_from_pos(conveyor_target)
+                if c_target_data:
+                    if not c_target_data.own_team and c_target_data.building_type in VALUABLE_ENEMY_ENTITIES:
                         is_valid_repair_target = True
 
-                # conveyor sending stuff to enemy valuable entity
-                if not is_valid_repair_target and conveyor_target and checkable_position(conveyor_target, self.ct):
-                    c_target_data = self.get_from_pos(conveyor_target)
-                    if c_target_data:
-                        if not c_target_data.own_team and c_target_data.building_type in VALUABLE_ENEMY_ENTITIES:
-                            is_valid_repair_target = True
+            # don't repair if another own bot is already on it
+            if tile_data.bot_id and tile_data.own_team and tile_data.bot_id != self.id:
+                is_valid_repair_target = False
 
-                # don't repair if another own bot is already on it
-                if tile_data.bot_id and tile_data.own_team and tile_data.bot_id != self.id:
-                    is_valid_repair_target = False
-
-                if not is_valid_repair_target:
-                    self.set_wandering()
+            if not is_valid_repair_target:
+                self.set_wandering()
 
             # if tile == self.current_target_position and self.current_state == BotState.GOING_TO_TARGET:
             #     if damaged:
@@ -157,12 +157,11 @@ class Repairer(Bot):
         self.visited_conveyors.add(self.current_target_position)
         print("Starting repair process")
         if self.current_state == BotState.GOING_TO_TARGET:
+            target_data = self.get_from_pos(self.current_target_position)
             
             if target_data.building_type in CONVEYORS:
                 conveyor_target = get_conveyor_target(self.current_target_position, self.ct)
                 conveyor_target_data = self.get_from_pos(conveyor_target)
-                target_data = self.get_from_pos(self.current_target_position)
-                
                 damaged = self.ct.get_hp(target_data.building_id) != self.ct.get_max_hp(target_data.building_id)
                 if damaged and self.ct.can_heal(self.current_target_position):
                     self.ct.heal(self.current_target_position)
@@ -171,9 +170,12 @@ class Repairer(Bot):
                     if self.ct.can_destroy(self.current_target_position):
                         self.ct.destroy(self.current_target_position)
 
-                        self.set_target(self.base_position, 1, BotState.GOING_BACK)
+                        self.set_target(self.current_target_position, 0, BotState.GOING_TO_TARGET)
                 elif conveyor_target_data and conveyor_target_data.building_type in IGNORED_BUILDINGS or conveyor_target_data.building_type == EntityType.ROAD:
-                    self.set_target(conveyor_target, 0, BotState.GOING_TO_TARGET)
+                    if self.ct.can_destroy(self.current_target_position):
+                        self.ct.destroy(self.current_target_position)
+
+                        self.set_target(self.current_target_position, 0, BotState.GOING_TO_TARGET)
                 elif not damaged:
                     self.set_wandering()
             elif self.current_target_position == self.position:
@@ -197,20 +199,21 @@ class Repairer(Bot):
         if self.ct.can_destroy(from_pos) and (from_data.destroyable() or from_data.is_team_road()):
             self.ct.destroy(from_pos)
 
-        bridge_target_pos_choices = self.get_positions_of_entities(from_pos, 9, EntityType.SPLITTER, self.team)
-        p = self.ct.get_position()
+        bridge_target_pos_choices = []
+        if from_pos.distance_squared(self.base_position) <= BASE_DIST:
+            bridge_target_pos_choices = self.get_positions_of_entities(self.position, 16, EntityType.SPLITTER, self.team)
         
         if bridge_target_pos_choices:
             bridge_target_pos = random.choice(bridge_target_pos_choices)
             if self.ct.can_build_bridge(from_pos, bridge_target_pos):
                 self.ct.build_bridge(from_pos, bridge_target_pos)
                 self.set_wandering()
-                return
-        elif from_pos.distance_squared(self.base_position) <= BASE_DIST:
+            return
+        elif from_pos.distance_squared(self.base_position) <= 18:
             if self.ct.can_build_bridge(from_pos, self.base_position):
                 self.ct.build_bridge(from_pos, self.base_position)
                 self.set_wandering()
-                return
+            return
 
         print(f"Building conveyor chain from {from_pos} to {to_pos}")
         if self.position.distance_squared(from_pos) > 1:
@@ -243,6 +246,7 @@ class Repairer(Bot):
                     self.current_target_position,
                     True, 
                     DeltaTypes.BRIDGE, 
+                    self.ct,
                     0, 
                     True
                 )
@@ -252,6 +256,7 @@ class Repairer(Bot):
                     self.current_target_position,
                     True, 
                     DeltaTypes.ALL, 
+                    self.ct,
                     self.target_distance_squared,
                     False
                 )
@@ -261,6 +266,7 @@ class Repairer(Bot):
                     self.current_target_position,
                     True, 
                     DeltaTypes.ALL, 
+                    self.ct,
                     self.target_distance_squared, 
-                    True
+                    self.target_distance_squared == 0
                 )

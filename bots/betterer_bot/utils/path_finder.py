@@ -1,15 +1,15 @@
 import heapq
 import math
-from cambc import Position, Environment
+from cambc import Controller, Position, Environment
 from utils.tile_info import TileData
-from utils.helper_functions import is_in_bound, direction_to_delta
+from utils.helper_functions import direction_to_delta
 from utils.constants import DeltaTypes
 from utils.path_queue import PathQueue
 
-_SENTINEL = -1
-
 
 class AStarPathfinder:
+    CPU_BUDGET_DEFAULT = 1600
+    BARRIER_COST = 5
 
     def __init__(self, _map: list[TileData | None], w: int):
         self.map = _map
@@ -17,20 +17,35 @@ class AStarPathfinder:
         self.h = len(_map) // w
         self.area = self.w * self.h
 
+        area = self.area
+
+        # g-values
+        self._g_fwd = [0.0] * area
+        self._g_bwd = [0.0] * area
+
+        # came-from
+        self._cf_fwd = [0] * area
+        self._cf_bwd = [0] * area
+
+        # stamps
+        self._stamp_gf = [0] * area
+        self._stamp_gb = [0] * area
+        self._stamp_cf = [0] * area   # closed forward
+        self._stamp_cb = [0] * area   # closed backward
+
+        self._call_id = 0
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Index / path helpers
+    # ─────────────────────────────────────────────────────────────────────
+
     def idx(self, x: int, y: int) -> int:
         return y * self.w + x
 
-    def heuristic(self, x: int, y: int, tx: int, ty: int, allow_diag: bool):
-        dx = abs(x - tx)
-        dy = abs(y - ty)
-        if allow_diag:
-            return max(dx, dy) + (math.sqrt(2) - 1) * min(dx, dy)
-        return dx + dy
-
     def reconstruct_path(self, came_from, start_i, current_i):
+        w = self.w
         path = []
         ci = current_i
-        w = self.w
         while ci != start_i:
             path.append(Position(ci % w, ci // w))
             ci = came_from[ci]
@@ -38,28 +53,52 @@ class AStarPathfinder:
         path.reverse()
         return PathQueue(path)
 
-    def reconstruct_path_bidir(self, came_from_fwd, came_from_bwd, start_i, meet_i):
+    def reconstruct_path_bidir(
+        self,
+        came_from_fwd, stamp_cf,
+        came_from_bwd, stamp_cb,
+        start_i, meet_i, cid
+    ):
         w = self.w
+        out = []
 
-        fwd = []
+        # forward half: start -> meet
         ci = meet_i
         while ci != start_i:
-            fwd.append(Position(ci % w, ci // w))
+            out.append(Position(ci % w, ci // w))
             ci = came_from_fwd[ci]
-        fwd.append(Position(start_i % w, start_i // w))
-        fwd.reverse()
+        out.append(Position(start_i % w, start_i // w))
+        out.reverse()
 
+        # backward half: meet's parent -> target-side seed root
         ci = came_from_bwd[meet_i]
-        while came_from_bwd[ci] != ci:
-            fwd.append(Position(ci % w, ci // w))
+        while stamp_cb[ci] == cid and came_from_bwd[ci] != ci:
+            out.append(Position(ci % w, ci // w))
             ci = came_from_bwd[ci]
-        fwd.append(Position(ci % w, ci // w))
+        out.append(Position(ci % w, ci // w))
 
-        return PathQueue(fwd)
+        return PathQueue(out)
 
-    def is_passable(self, ni: int, walls, include_barriers=False):
-        cell = self.map[ni]
-        return cell is None or cell.passable(walls) or (not include_barriers and cell.destroyable())
+    # ─────────────────────────────────────────────────────────────────────
+    # Tile classification
+    # class 0 = free/passable
+    # class 1 = barrier (destroyable, walkable with cost)
+    # class 2 = true wall (not directly walkable)
+    # ─────────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _tile_class(cell, walls) -> int:
+        if cell is None:
+            return 0
+        if cell.passable(walls):
+            return 0
+        if cell.destroyable():
+            return 1
+        return 2
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Main
+    # ─────────────────────────────────────────────────────────────────────
 
     def run(
         self,
@@ -67,15 +106,31 @@ class AStarPathfinder:
         target: Position,
         ignore_ores: bool,
         delta_type: DeltaTypes,
+        ct: Controller,  # NEW: timing object with get_cpu_time()
         target_distance_squared: int = 0,
-        bypass_wall: bool = False,
-        include_barriers=False,
+        bypass_wall: bool = False,        # target-zone ignore walls
+        include_barriers: bool = False,   # kept for API compatibility
+        cpu_budget: int = CPU_BUDGET_DEFAULT,
     ):
-        allow_diag = delta_type == DeltaTypes.ALL
-        w           = self.w
-        h           = self.h
-        area        = self.area
-        _map        = self.map
+        # include_barriers is intentionally not changing behavior because
+        # your intended semantics say barriers are walkable with a cost.
+        _ = include_barriers
+
+        start_cpu = ct.get_cpu_time_elapsed()
+
+        w = self.w
+        h = self.h
+        area = self.area
+        _map = self.map
+        INF = math.inf
+
+        ox, oy = origin.x, origin.y
+        tx, ty = target.x, target.y
+        start_i = oy * w + ox
+
+        # Early success: already in target radius
+        if (ox - tx) ** 2 + (oy - ty) ** 2 <= target_distance_squared:
+            return PathQueue([Position(ox, oy)])
 
         walls = (
             {Environment.WALL}
@@ -83,293 +138,388 @@ class AStarPathfinder:
             else {Environment.WALL, Environment.ORE_TITANIUM, Environment.ORE_AXIONITE}
         )
 
-        ox, oy = origin.x, origin.y
-        tx, ty = target.x, target.y
-        start_i = oy * w + ox
+        allow_diag = (delta_type == DeltaTypes.ALL)
+        is_bridge = (delta_type == DeltaTypes.BRIDGE)
 
-        if (ox - tx) ** 2 + (oy - ty) ** 2 <= target_distance_squared:
-            return PathQueue([Position(ox, oy)])
-
-        deltas          = direction_to_delta(delta_type)
+        # Movement deltas
+        deltas = direction_to_delta(delta_type)
         cardinal_deltas = direction_to_delta(DeltaTypes.CARDINAL)
-        is_bridge       = delta_type == DeltaTypes.BRIDGE
+        normal_deltas = cardinal_deltas if is_bridge else deltas
 
-        # ── sanity: origin has at least one passable neighbor ─────────────────
-        has_fwd_neighbors = False
-        for ddx, ddy, _ in deltas:
+        # Heuristic chooser
+        sqrt2m1 = math.sqrt(2) - 1.0
+
+        if allow_diag:
+            def h_to_target(x, y):
+                dx = x - tx
+                dy = y - ty
+                if dx < 0: dx = -dx
+                if dy < 0: dy = -dy
+                if dx > dy:
+                    return dx + sqrt2m1 * dy
+                return dy + sqrt2m1 * dx
+
+            def h_to_origin(x, y):
+                dx = x - ox
+                dy = y - oy
+                if dx < 0: dx = -dx
+                if dy < 0: dy = -dy
+                if dx > dy:
+                    return dx + sqrt2m1 * dy
+                return dy + sqrt2m1 * dx
+        else:
+            def h_to_target(x, y):
+                dx = x - tx
+                dy = y - ty
+                if dx < 0: dx = -dx
+                if dy < 0: dy = -dy
+                return dx + dy
+
+            def h_to_origin(x, y):
+                dx = x - ox
+                dy = y - oy
+                if dx < 0: dx = -dx
+                if dy < 0: dy = -dy
+                return dx + dy
+
+        # O(1) reset via call stamp
+        self._call_id += 1
+        cid = self._call_id
+
+        g_fwd = self._g_fwd
+        g_bwd = self._g_bwd
+        cf_fwd = self._cf_fwd
+        cf_bwd = self._cf_bwd
+        stamp_gf = self._stamp_gf
+        stamp_gb = self._stamp_gb
+        stamp_cf = self._stamp_cf
+        stamp_cb = self._stamp_cb
+
+        # Precompute tile classes for this walls-set
+        tile_cls = [0] * area
+        for i in range(area):
+            tile_cls[i] = self._tile_class(_map[i], walls)
+
+        # Sanity: origin has at least one outward-expandable neighbor
+        sanity_deltas = cardinal_deltas if is_bridge else deltas
+        has_fwd_neighbor = False
+        for ddx, ddy, _ in sanity_deltas:
             nx, ny = ox + ddx, oy + ddy
             if 0 <= nx < w and 0 <= ny < h:
-                if self.is_passable(ny * w + nx, walls, include_barriers):
-                    has_fwd_neighbors = True
+                ni = ny * w + nx
+                if tile_cls[ni] != 2:  # free or barrier
+                    has_fwd_neighbor = True
                     break
-        if not has_fwd_neighbors:
+        if not has_fwd_neighbor:
             print(f"[ASTAR] FAILED (origin surrounded) origin=({ox},{oy}) target=({tx},{ty})")
             return None
 
-        # ── sanity: target has at least one passable neighbor ─────────────────
-        has_bwd_neighbors = False
-        for ddx, ddy, _ in deltas:
+        # Sanity: target has at least one outward-expandable neighbor
+        has_bwd_neighbor = False
+        for ddx, ddy, _ in sanity_deltas:
             nx, ny = tx + ddx, ty + ddy
             if 0 <= nx < w and 0 <= ny < h:
-                if self.is_passable(ny * w + nx, walls, include_barriers):
-                    has_bwd_neighbors = True
+                ni = ny * w + nx
+                if tile_cls[ni] != 2:
+                    has_bwd_neighbor = True
                     break
-        if not has_bwd_neighbors:
+        if not has_bwd_neighbor:
             print(f"[ASTAR] FAILED (target surrounded) origin=({ox},{oy}) target=({tx},{ty})")
             return None
 
-        # ── forward init ──────────────────────────────────────────────────────
-        open_fwd      = [(0.0, ox, oy)]
-        came_from_fwd = [-1] * area
-        g_fwd         = [math.inf] * area
-        closed_fwd    = bytearray(area)
+        # Forward init
+        stamp_gf[start_i] = cid
+        g_fwd[start_i] = 0.0
+        cf_fwd[start_i] = start_i
+        open_fwd = [(0.0, start_i)]
 
-        came_from_fwd[start_i] = start_i
-        g_fwd[start_i]         = 0.0
+        # Track closest-forward fallback (for timeout with no meet)
+        best_forward_node = start_i
+        best_forward_h = h_to_target(ox, oy)
 
-        # ── backward init ─────────────────────────────────────────────────────
-        open_bwd      = []
-        came_from_bwd = [-1] * area
-        g_bwd         = [math.inf] * area
-        closed_bwd    = bytearray(area)
-
+        # Backward init: seed target radius
+        open_bwd = []
         r = int(math.isqrt(target_distance_squared))
         for dy in range(-r, r + 1):
+            y = ty + dy
+            if y < 0 or y >= h:
+                continue
             for dx in range(-r, r + 1):
-                if dx * dx + dy * dy <= target_distance_squared:
-                    nx, ny = tx + dx, ty + dy
-                    if 0 <= nx < w and 0 <= ny < h:
-                        ni   = ny * w + nx
-                        cell = _map[ni]
-                        is_open    = cell is None or cell.passable(walls)
-                        is_barrier = cell is not None and cell.destroyable()
-                        if bypass_wall or is_open or (include_barriers and is_barrier):
-                            came_from_bwd[ni] = ni
-                            g_bwd[ni]         = 0.0
-                            heapq.heappush(open_bwd, (0.0, nx, ny))
+                if dx * dx + dy * dy > target_distance_squared:
+                    continue
+                x = tx + dx
+                if x < 0 or x >= w:
+                    continue
+                ni = y * w + x
+
+                # Seed rules:
+                # - bypass_wall => always seed
+                # - else seed walkable (free/barrier)
+                # - always seed exact target cell
+                if bypass_wall or tile_cls[ni] != 2 or (x == tx and y == ty):
+                    stamp_gb[ni] = cid
+                    g_bwd[ni] = 0.0
+                    cf_bwd[ni] = ni
+                    heapq.heappush(open_bwd, (0.0, ni))
 
         if not open_bwd:
             print(f"[ASTAR] FAILED (no valid landing zone) origin=({ox},{oy}) target=({tx},{ty})")
             return None
 
-        # ── cache heuristic method and sqrt2 locally ──────────────────────────
-        sqrt2_minus_1 = math.sqrt(2) - 1
-        heappush      = heapq.heappush
-        heappop       = heapq.heappop
+        heappush = heapq.heappush
+        heappop = heapq.heappop
 
-        best      = math.inf
+        best = INF
         meet_node = -1
 
-        # ── main loop (fully inlined, no closure overhead) ────────────────────
+        def timeout_return():
+            nonlocal meet_node
+            if meet_node != -1:
+                if stamp_gb[meet_node] == cid and cf_bwd[meet_node] == meet_node:
+                    return self.reconstruct_path(cf_fwd, start_i, meet_node)
+                return self.reconstruct_path_bidir(
+                    cf_fwd, stamp_cf, cf_bwd, stamp_cb, start_i, meet_node, cid
+                )
+            # no connected path yet -> closest forward partial
+            if best_forward_node != -1:
+                return self.reconstruct_path(cf_fwd, start_i, best_forward_node)
+            return None
+
+        # Main loop
         while open_fwd and open_bwd:
+            # CPU budget check
+            if ct.get_cpu_time_elapsed() - start_cpu > cpu_budget:
+                path = timeout_return()
+                if path is None:
+                    print(f"[ASTAR] TIMEOUT no path origin=({ox},{oy}) target=({tx},{ty})")
+                else:
+                    print(f"[ASTAR] TIMEOUT partial path origin=({ox},{oy}) target=({tx},{ty}) len={len(path)}")
+                return path
+
             f_fwd = open_fwd[0][0]
             f_bwd = open_bwd[0][0]
 
-            if meet_node != -1 and (f_fwd if f_fwd < f_bwd else f_bwd) >= best:
+            lower = f_fwd if f_fwd < f_bwd else f_bwd
+            if meet_node != -1 and lower >= best:
                 break
 
-            # pick which side to expand
-            if f_fwd <= f_bwd:
-                # ── forward step ──────────────────────────────────────────────
-                f, cx, cy = heappop(open_fwd)
-                ci = cy * w + cx
-                if closed_fwd[ci]:
+            # Expand side with lower f; tie-break by smaller queue
+            expand_forward = (f_fwd < f_bwd) or (f_fwd == f_bwd and len(open_fwd) <= len(open_bwd))
+
+            if expand_forward:
+                _, ci = heappop(open_fwd)
+                if stamp_cf[ci] == cid:
                     continue
-                closed_fwd[ci] = 1
+                stamp_cf[ci] = cid
 
-                if closed_bwd[ci]:
-                    candidate = g_fwd[ci] + g_bwd[ci]
-                    if candidate < best:
-                        best      = candidate
-                        meet_node = ci
-
-                cur_deltas = cardinal_deltas if is_bridge else deltas
+                cx = ci % w
+                cy = ci // w
                 g_ci = g_fwd[ci]
 
-                for ddx, ddy, penalty in cur_deltas:
-                    nx = cx + ddx
-                    ny = cy + ddy
-                    if nx < 0 or nx >= w or ny < 0 or ny >= h:
-                        continue
-                    ni = ny * w + nx
-                    if closed_fwd[ni]:
-                        continue
-
-                    cell = _map[ni]
-                    passable = cell is None or cell.passable(walls) or (not include_barriers and cell.destroyable() if cell else False)
-                    if not passable:
-                        if is_bridge and (cx != ox or cy != oy):
-                            # wall hit — try all bridge deltas from current position
-                            for bddx, bddy, bpenalty in deltas:
-                                bnx = cx + bddx
-                                bny = cy + bddy
-                                if bnx < 0 or bnx >= w or bny < 0 or bny >= h:
-                                    continue
-                                bni = bny * w + bnx
-                                if closed_fwd[bni]:
-                                    continue
-                                bcell = _map[bni]
-                                bpassable = bcell is None or bcell.passable(walls) or (not include_barriers and bcell.destroyable() if bcell else False)
-                                if not bpassable:
-                                    continue
-                                bbarrier_cost = 5 if (bcell is not None and bcell.destroyable()) else 0
-                                new_g = g_ci + bpenalty + bbarrier_cost
-                                if new_g >= g_fwd[bni]:
-                                    continue
-                                came_from_fwd[bni] = ci
-                                g_fwd[bni]         = new_g
-                                if closed_bwd[bni]:
-                                    candidate = new_g + g_bwd[bni]
-                                    if candidate < best:
-                                        best      = candidate
-                                        meet_node = bni
-                                dx_ = bnx - tx
-                                dy_ = bny - ty
-                                if allow_diag:
-                                    adx, ady = (dx_ if dx_ >= 0 else -dx_), (dy_ if dy_ >= 0 else -dy_)
-                                    h_val = (adx if adx > ady else ady) + sqrt2_minus_1 * (adx if adx < ady else ady)
-                                else:
-                                    h_val = (dx_ if dx_ >= 0 else -dx_) + (dy_ if dy_ >= 0 else -dy_)
-                                heappush(open_fwd, (new_g + h_val, bnx, bny))
-                        elif bypass_wall:
-                            dx2 = nx - tx
-                            dy2 = ny - ty
-                            if dx2 * dx2 + dy2 * dy2 > target_distance_squared:
-                                continue
-                        else:
-                            continue
-                        continue  # wall cell itself is never added to path
-
-                    barrier_cost = 5 if (cell is not None and cell.destroyable()) else 0
-                    new_g = g_ci + penalty + barrier_cost
-                    if new_g >= g_fwd[ni]:
-                        continue
-
-                    came_from_fwd[ni] = ci
-                    g_fwd[ni]         = new_g
-
-                    if closed_bwd[ni]:
-                        candidate = new_g + g_bwd[ni]
-                        if candidate < best:
-                            best      = candidate
-                            meet_node = ni
-
-                    dx_ = nx - tx
-                    dy_ = ny - ty
-                    if allow_diag:
-                        adx, ady = (dx_ if dx_ >= 0 else -dx_), (dy_ if dy_ >= 0 else -dy_)
-                        h_val = (adx if adx > ady else ady) + sqrt2_minus_1 * (adx if adx < ady else ady)
-                    else:
-                        h_val = (dx_ if dx_ >= 0 else -dx_) + (dy_ if dy_ >= 0 else -dy_)
-                    heappush(open_fwd, (new_g + h_val, nx, ny))
-
-            else:
-                # ── backward step ─────────────────────────────────────────────
-                f, cx, cy = heappop(open_bwd)
-                ci = cy * w + cx
-                if closed_bwd[ci]:
-                    continue
-                closed_bwd[ci] = 1
-
-                if closed_fwd[ci]:
-                    candidate = g_bwd[ci] + g_fwd[ci]
-                    if candidate < best:
-                        best      = candidate
+                # meeting candidate
+                if stamp_gb[ci] == cid:
+                    cand = g_ci + g_bwd[ci]
+                    if cand < best:
+                        best = cand
                         meet_node = ci
 
-                cur_deltas = cardinal_deltas if is_bridge else deltas
-                g_ci = g_bwd[ci]
-
-                for ddx, ddy, penalty in cur_deltas:
+                for ddx, ddy, step_cost in normal_deltas:
                     nx = cx + ddx
                     ny = cy + ddy
                     if nx < 0 or nx >= w or ny < 0 or ny >= h:
                         continue
                     ni = ny * w + nx
-                    if closed_bwd[ni]:
+                    if stamp_cf[ni] == cid:
                         continue
 
-                    cell = _map[ni]
-                    passable = cell is None or cell.passable(walls) or (not include_barriers and cell.destroyable() if cell else False)
-                    if not passable:
-                        if is_bridge and (cx != tx or cy != ty):
-                            # wall hit — try all bridge deltas from current position
-                            for bddx, bddy, bpenalty in deltas:
-                                bnx = cx + bddx
-                                bny = cy + bddy
-                                if bnx < 0 or bnx >= w or bny < 0 or bny >= h:
-                                    continue
-                                bni = bny * w + bnx
-                                if closed_bwd[bni]:
-                                    continue
-                                bcell = _map[bni]
-                                bpassable = bcell is None or bcell.passable(walls) or (not include_barriers and bcell.destroyable() if bcell else False)
-                                if not bpassable:
-                                    continue
-                                bbarrier_cost = 5 if (bcell is not None and bcell.destroyable()) else 0
-                                new_g = g_ci + bpenalty + bbarrier_cost
-                                if new_g >= g_bwd[bni]:
-                                    continue
-                                came_from_bwd[bni] = ci
-                                g_bwd[bni]         = new_g
-                                if closed_fwd[bni]:
-                                    candidate = new_g + g_fwd[bni]
-                                    if candidate < best:
-                                        best      = candidate
-                                        meet_node = bni
-                                dx_ = bnx - ox
-                                dy_ = bny - oy
-                                if allow_diag:
-                                    adx, ady = (dx_ if dx_ >= 0 else -dx_), (dy_ if dy_ >= 0 else -dy_)
-                                    h_val = (adx if adx > ady else ady) + sqrt2_minus_1 * (adx if adx < ady else ady)
-                                else:
-                                    h_val = (dx_ if dx_ >= 0 else -dx_) + (dy_ if dy_ >= 0 else -dy_)
-                                heappush(open_bwd, (new_g + h_val, bnx, bny))
-                        else:
-                            continue  # backward never bypasses walls
-                        continue  # wall cell itself is never added to path
+                    tc = tile_cls[ni]
 
-                    barrier_cost = 5 if (cell is not None and cell.destroyable()) else 0
-                    new_g = g_ci + penalty + barrier_cost
-                    if new_g >= g_bwd[ni]:
+                    if tc == 2:
+                        # true wall -> only bridge jump if bridge mode
+                        if not is_bridge:
+                            continue
+                        # no bridge from origin
+                        if cx == ox and cy == oy:
+                            continue
+
+                        for bddx, bddy, bpen in deltas:
+                            bnx = cx + bddx
+                            bny = cy + bddy
+                            if bnx < 0 or bnx >= w or bny < 0 or bny >= h:
+                                continue
+                            bni = bny * w + bnx
+                            if stamp_cf[bni] == cid:
+                                continue
+
+                            btc = tile_cls[bni]
+                            if btc == 2:
+                                continue
+
+                            barrier_extra = self.BARRIER_COST if btc == 1 else 0
+                            new_g = g_ci + bpen + barrier_extra
+                            old_g = g_fwd[bni] if stamp_gf[bni] == cid else INF
+                            if new_g >= old_g:
+                                continue
+
+                            cf_fwd[bni] = ci
+                            g_fwd[bni] = new_g
+                            stamp_gf[bni] = cid
+
+                            # closest-forward tracking
+                            bh = h_to_target(bnx, bny)
+                            if bh < best_forward_h:
+                                best_forward_h = bh
+                                best_forward_node = bni
+
+                            if stamp_gb[bni] == cid:
+                                cand = new_g + g_bwd[bni]
+                                if cand < best:
+                                    best = cand
+                                    meet_node = bni
+
+                            heappush(open_fwd, (new_g + bh, bni))
                         continue
 
-                    came_from_bwd[ni] = ci
-                    g_bwd[ni]         = new_g
+                    barrier_extra = self.BARRIER_COST if tc == 1 else 0
+                    new_g = g_ci + step_cost + barrier_extra
+                    old_g = g_fwd[ni] if stamp_gf[ni] == cid else INF
+                    if new_g >= old_g:
+                        continue
 
-                    if closed_fwd[ni]:
-                        candidate = new_g + g_fwd[ni]
-                        if candidate < best:
-                            best      = candidate
+                    cf_fwd[ni] = ci
+                    g_fwd[ni] = new_g
+                    stamp_gf[ni] = cid
+
+                    nh = h_to_target(nx, ny)
+                    if nh < best_forward_h:
+                        best_forward_h = nh
+                        best_forward_node = ni
+
+                    if stamp_gb[ni] == cid:
+                        cand = new_g + g_bwd[ni]
+                        if cand < best:
+                            best = cand
                             meet_node = ni
 
-                    dx_ = nx - ox
-                    dy_ = ny - oy
-                    if allow_diag:
-                        adx, ady = (dx_ if dx_ >= 0 else -dx_), (dy_ if dy_ >= 0 else -dy_)
-                        h_val = (adx if adx > ady else ady) + sqrt2_minus_1 * (adx if adx < ady else ady)
-                    else:
-                        h_val = (dx_ if dx_ >= 0 else -dx_) + (dy_ if dy_ >= 0 else -dy_)
-                    heappush(open_bwd, (new_g + h_val, nx, ny))
+                    heappush(open_fwd, (new_g + nh, ni))
 
-        # ── path reconstruction ───────────────────────────────────────────────
+            else:
+                _, ci = heappop(open_bwd)
+                if stamp_cb[ci] == cid:
+                    continue
+                stamp_cb[ci] = cid
+
+                cx = ci % w
+                cy = ci // w
+                g_ci = g_bwd[ci]
+
+                if stamp_gf[ci] == cid:
+                    cand = g_ci + g_fwd[ci]
+                    if cand < best:
+                        best = cand
+                        meet_node = ci
+
+                for ddx, ddy, step_cost in normal_deltas:
+                    nx = cx + ddx
+                    ny = cy + ddy
+                    if nx < 0 or nx >= w or ny < 0 or ny >= h:
+                        continue
+                    ni = ny * w + nx
+                    if stamp_cb[ni] == cid:
+                        continue
+
+                    tc = tile_cls[ni]
+
+                    if tc == 2:
+                        if not is_bridge:
+                            continue
+                        # no bridge from target anchor
+                        if cx == tx and cy == ty:
+                            continue
+
+                        for bddx, bddy, bpen in deltas:
+                            bnx = cx + bddx
+                            bny = cy + bddy
+                            if bnx < 0 or bnx >= w or bny < 0 or bny >= h:
+                                continue
+                            bni = bny * w + bnx
+                            if stamp_cb[bni] == cid:
+                                continue
+
+                            btc = tile_cls[bni]
+                            if btc == 2:
+                                continue
+
+                            barrier_extra = self.BARRIER_COST if btc == 1 else 0
+                            new_g = g_ci + bpen + barrier_extra
+                            old_g = g_bwd[bni] if stamp_gb[bni] == cid else INF
+                            if new_g >= old_g:
+                                continue
+
+                            cf_bwd[bni] = ci
+                            g_bwd[bni] = new_g
+                            stamp_gb[bni] = cid
+
+                            if stamp_gf[bni] == cid:
+                                cand = new_g + g_fwd[bni]
+                                if cand < best:
+                                    best = cand
+                                    meet_node = bni
+
+                            heappush(open_bwd, (new_g + h_to_origin(bnx, bny), bni))
+                        continue
+
+                    barrier_extra = self.BARRIER_COST if tc == 1 else 0
+                    new_g = g_ci + step_cost + barrier_extra
+                    old_g = g_bwd[ni] if stamp_gb[ni] == cid else INF
+                    if new_g >= old_g:
+                        continue
+
+                    cf_bwd[ni] = ci
+                    g_bwd[ni] = new_g
+                    stamp_gb[ni] = cid
+
+                    if stamp_gf[ni] == cid:
+                        cand = new_g + g_fwd[ni]
+                        if cand < best:
+                            best = cand
+                            meet_node = ni
+
+                    heappush(open_bwd, (new_g + h_to_origin(nx, ny), ni))
+
+        # Final reconstruction
         if meet_node == -1:
+            # no connected path; return closest-forward partial (policy on fail)
+            if best_forward_node != -1:
+                path = self.reconstruct_path(cf_fwd, start_i, best_forward_node)
+                print(f"[ASTAR] FAILED-CONNECT partial origin=({ox},{oy}) target=({tx},{ty}) len={len(path)}")
+                return path
+
             print(f"[ASTAR] FAILED origin=({ox},{oy}) target=({tx},{ty})")
             return None
 
-        if came_from_bwd[meet_node] == meet_node:
-            path = self.reconstruct_path(came_from_fwd, start_i, meet_node)
+        if stamp_gb[meet_node] == cid and cf_bwd[meet_node] == meet_node:
+            path = self.reconstruct_path(cf_fwd, start_i, meet_node)
         else:
-            path = self.reconstruct_path_bidir(came_from_fwd, came_from_bwd, start_i, meet_node)
+            path = self.reconstruct_path_bidir(
+                cf_fwd, stamp_cf, cf_bwd, stamp_cb, start_i, meet_node, cid
+            )
 
-        barriers_crossed = sum(
-            1 for pos in path._deque
-            if _map[pos.y * w + pos.x] is not None
-            and _map[pos.y * w + pos.x].destroyable()
+        barriers_crossed = 0
+        for pos in path._deque:
+            i = pos.y * w + pos.x
+            if tile_cls[i] == 1:
+                barriers_crossed += 1
+
+        print(
+            f"[ASTAR] origin=({ox},{oy}) target=({tx},{ty}) "
+            f"path_len={len(path)} barriers_crossed={barriers_crossed}"
         )
-        print(f"[ASTAR] origin=({ox},{oy}) target=({tx},{ty}) "
-              f"path_len={len(path)} barriers_crossed={barriers_crossed}")
         return path
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Debug map
+    # ─────────────────────────────────────────────────────────────────────
 
     def debug_print_map(self, path, origin, target, walls, include_barriers=False, explored=None):
         """
@@ -377,27 +527,28 @@ class AStarPathfinder:
           O  = origin       X  = target
           *  = path         B  = barrier (destroyable)
           #  = wall         f  = closed fwd only
-          b  = closed bwd   +  = closed both
-          .  = unvisited
+          b  = closed bwd   +  = closed both.  = unvisited
         """
+        _ = include_barriers
+
         path_coords = set()
         if path:
             for pos in path._deque:
                 path_coords.add((pos.x, pos.y))
 
         explored = explored or {}
-        ox, oy   = origin.x, origin.y
-        tx, ty   = target.x, target.y
+        ox, oy = origin.x, origin.y
+        tx, ty = target.x, target.y
 
-        print(f"    ", end="")
+        print("    ", end="")
         for x in range(self.w):
-            print(f"{x%10}", end="")
+            print(f"{x % 10}", end="")
         print()
 
         for y in range(self.h):
             print(f"{y:3} ", end="")
             for x in range(self.w):
-                i    = y * self.w + x
+                i = y * self.w + x
                 cell = self.map[i]
 
                 if (x, y) == (ox, oy):
