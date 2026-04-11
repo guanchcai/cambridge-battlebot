@@ -45,8 +45,6 @@ class Bot(EBase):
 
         self.position = ct.get_position()
 
-        self.bum_factor = 0.5 # 0 to 1
-
         for x in range(self.map_width):
             for y in range(self.map_height):
                 p = Position(x, y)

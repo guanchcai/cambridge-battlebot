@@ -67,6 +67,7 @@ class TargetTypes(Enum):
     AGG_HARVESTER = 5
     AGG_DISCONNECTED_CONVEYOR = 6
     REMOVAL = 7
+    SENTINEL = 8
 
 TURRET_THREAT_RADIUS = 2
 _SENTINEL = object()
