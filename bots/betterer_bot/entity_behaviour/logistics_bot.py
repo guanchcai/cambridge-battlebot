@@ -17,6 +17,7 @@ class LogisticsBot(Bot):
         self.checked = set()
         self.absolute_inting_traitors = set()
         self.dont_harvest = set()
+        self.to_guard = set()
 
         self.visiting_queue = set()
         self.visited = set()
@@ -26,6 +27,9 @@ class LogisticsBot(Bot):
 
         self.dont_build = False
 
+        self.harvester_pos = None
+        self.turrets = set()
+
         super().__init__(ct)
     
     def update_map(self):
@@ -33,6 +37,7 @@ class LogisticsBot(Bot):
         self.checked.clear()
         self.absolute_inting_traitors.clear()
         self.to_repair.clear()
+        self.to_guard.clear()
         
         if random.random() > DEMENTIA_RATE and self.target_black_list:
             self.target_black_list.pop()
@@ -40,12 +45,13 @@ class LogisticsBot(Bot):
         super().update_map()
         
         unconnected = set(filter(lambda p: p not in self.target_black_list, self.pending_checks - self.checked))
-        if self.current_target_type == TargetTypes.ORE and unconnected:
+        if (self.current_target_type == TargetTypes.ORE or self.current_target_type == TargetTypes.SENTINEL or self.current_state == BotState.WANDERING) and unconnected:
             self.visited_ore_sites.discard(self.current_target_position)
             self.set_wandering()
 
     def update_tile(self, tile: Position, tile_data: TileData):
-        
+        ### 1. find the target
+
         if tile_data.environment == Environment.ORE_TITANIUM:
             if tile not in self.ore_sites:
                 print(f"Inserted ore {tile}")
@@ -93,6 +99,10 @@ class LogisticsBot(Bot):
                             self.set_wandering()
         
         if tile_data and tile_data.building_type == EntityType.HARVESTER and tile_data.own_team:
+            can_build_sentinel = False
+            if all([turret.target_distance_squared(tile) >= SENTINEL_RANGE / 2 for turret in self.turrets]): # Tweak number
+                can_build_sentinel = True
+
             for d in CARDINAL_DIRECTIONS:
                 check_pos = tile.add(d)
                 if not checkable_position(check_pos, self.ct):
@@ -101,8 +111,19 @@ class LogisticsBot(Bot):
                 if check_info and check_info.building_type in TURRETS and not check_info.own_team:
                     self.absolute_inting_traitors.add(tile)
                     self.dont_harvest.add(tile)
-                    if self.current_target_type != TargetTypes.REMOVAL:
+                    if self.current_target_type != TargetTypes.REMOVAL: # i want guancheng to edge me until i cry
                         self.set_wandering()
+                
+                if can_build_sentinel and check_info and (check_info.building_type in IGNORED_BUILDINGS or check_info.building_type == EntityType.ROAD or check_info.destroyable()):
+                    self.to_guard.add(check_pos)
+                    if self.current_target_type != TargetTypes.SENTINEL and self.current_target_type != TargetTypes.REMOVAL and self.current_target_type != TargetTypes.REPAIR and self.current_target_type != TargetTypes.CONNECT_BRIDGE:
+                        self.set_wandering()
+                    
+
+        if tile_data and tile_data.building_type in TURRETS:
+            self.turrets.add(tile)
+
+        ### 2. is it valid or nah
 
         if tile_data and tile_data.building_type not in INVALID_CONTAINERS:
             print(f"Added {tile} to checked")
@@ -132,6 +153,10 @@ class LogisticsBot(Bot):
                     damaged = tile_data and tile_data.building_id and self.ct.get_hp(tile_data.building_id) < self.ct.get_max_hp(tile_data.building_id)
                     if not damaged:
                         print("Repair target not actually damaged")
+                        self.set_wandering()
+                case TargetTypes.SENTINEL:
+                    guard_data = self.get_from_pos(self.current_target_position)
+                    if guard_data is None or not(guard_data.building_type in IGNORED_BUILDINGS or guard_data.building_type == EntityType.ROAD or guard_data.destroyable()):
                         self.set_wandering()
 
     def move_to_pos(self):
@@ -254,31 +279,49 @@ class LogisticsBot(Bot):
                 if not target_data.building_id or not (target_data.own_team and (target_data.building_type in CONVEYORS or target_data.building_type == EntityType.HARVESTER)):
                     # Already removed
                     self.set_wandering()
-
+            case TargetTypes.SENTINEL:
+                can_build = self.ct.get_global_resources()[0] < self.ct.get_sentinel_cost()[0] and self.ct.get_action_cooldown() == 0
+                if can_build and (target_data.building_type == None or target_data.is_team_road() or target_data.destroyable()):
+                    if self.position == self.current_target_position:
+                        self.move_to_adjacent()
+                    
+                    if self.ct.can_destroy(self.current_target_position):
+                        self.ct.destroy(self.current_target_position)
+                    
+                    facing = self.base_position.direction_to(self.harvester_pos)
+                    if self.ct.can_build_sentinel(self.current_target_position, facing):
+                        self.ct.build_sentinel(self.current_target_position.fac )
+                
     def nearest_unexplored(self):
         print("Finding nearest unexplored")
-        to_delete = set(filter(lambda p: p not in self.target_black_list, self.absolute_inting_traitors))
+        to_delete = self.absolute_inting_traitors - self.target_black_list # set(filter(lambda p: p not in self.target_black_list, self.absolute_inting_traitors))
         if to_delete:
             traitor = next(iter(to_delete))
             self.set_target(traitor, 0, BotState.GOING_TO_TARGET, TargetTypes.REMOVAL)
             print(f"Nearest unexplored is a traitor at: {traitor}")
             return traitor
 
-        to_heal = set(filter(lambda p: p not in self.target_black_list, self.to_repair))
+        to_heal = self.to_repair - self.target_black_list # set(filter(lambda p: p not in self.target_black_list, self.to_repair))
         if to_heal:
             to_check = next(iter(to_heal))
             self.set_target(to_check, 2, BotState.GOING_TO_TARGET, TargetTypes.REPAIR)
             print(f"Nearest unexplored is a damaged building at: {to_check}")
             return to_check
 
-        print(self.pending_checks)
-        print(self.checked)
         unconnected = set(filter(lambda p: p not in self.target_black_list and self.is_passable(p), self.pending_checks - self.checked))
         if unconnected:
             to_check = next(iter(unconnected))
-            self.pending_checks.remove(to_check)
+            self.pending_checks.discard(to_check)
             self.set_target(to_check, 0, BotState.GOING_TO_TARGET, TargetTypes.CONNECT_BRIDGE)
             print(f"Nearest unexplored is an unconnected conveyor at: {to_check}")
+            return to_check
+
+        unguarded = self.to_guard - self.target_black_list # set(filter(lambda p: p not in self.target_black_list, self.to_guard))
+        if unguarded:
+            to_check = next(iter(unguarded))
+            self.pending_checks.discard(to_check)
+            self.set_target(to_check, 0, BotState.GOING_TO_TARGET, TargetTypes.SENTINEL)
+            print(f"Nearest unexplored is a unprotected area at: {to_check}")
             return to_check
 
         unvisited_ores = None
