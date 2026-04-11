@@ -272,11 +272,7 @@ class Gatherer(Bot):
         if self.ct.get_global_resources()[0] < self.ct.get_sentinel_cost()[0]:
             return
         # try the side furthest from base first?
-        candidates = sorted(
-            CARDINAL_DIRECTIONS,
-            key=lambda d: -self.base_position.distance_squared(harvester_pos.add(d))
-        )
-        for d in candidates:
+        for d in CARDINAL_DIRECTIONS:
             guard_pos = harvester_pos.add(d)
             if not checkable_position(guard_pos, self.ct):
                 continue
