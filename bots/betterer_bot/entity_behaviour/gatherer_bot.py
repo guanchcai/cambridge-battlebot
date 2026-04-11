@@ -265,8 +265,31 @@ class Gatherer(Bot):
                 self.harvester_count += 1
                 if tile_data.environment == Environment.ORE_TITANIUM:
                     self.titanium_harvester_count += 1
+                self._try_place_sentinel_near(potential_harvester_pos)
             return True
             
+    def _try_place_sentinel_near(self, harvester_pos: Position):
+        if self.ct.get_global_resources()[0] < self.ct.get_sentinel_cost()[0]:
+            return
+        # try the side furthest from base first?
+        candidates = sorted(
+            CARDINAL_DIRECTIONS,
+            key=lambda d: -self.base_position.distance_squared(harvester_pos.add(d))
+        )
+        for d in candidates:
+            guard_pos = harvester_pos.add(d)
+            if not checkable_position(guard_pos, self.ct):
+                continue
+            guard_data = self.get_from_pos(guard_pos)
+            if guard_data is None or guard_data.building_type not in IGNORED_BUILDINGS:
+                continue
+            if guard_data.environment in ORE_SITES:
+                continue
+            facing = self.base_position.direction_to(guard_pos)
+            if self.ct.can_build_sentinel(guard_pos, facing):
+                self.ct.build_sentinel(guard_pos, facing)
+                return
+
 """
                                    :---.            ..      ..   .:.                       . ....                                 
                                   :--.  .  ...                    :.                            :.                                
