@@ -4,7 +4,7 @@ import math
 
 class Core(EBase):
     def __init__(self, ct: Controller):
-        self.spawn_queue = [Direction.NORTH, Direction.CENTRE]
+        self.spawn_queue = [Direction.NORTH, Direction.CENTRE, Direction.WEST]
         self.spawned = 0
         self.aggressors_spawned = 0  # Track number of aggressors spawned
         
@@ -38,13 +38,16 @@ class Core(EBase):
         c_r = ct.get_current_round()
         if c_r in {min(self.map_width, self.map_height) // 2, 500, 1000, 1500}:
             self.spawn_queue.append(Direction.EAST)
+        
+        if c_r in {50, 60, 200, 500, 1000, 1100, 1200, 1300, 1400, 1500}:
+            self.spawn_queue.append(Direction.WEST)
 
 
-        if c_r % self.multiplier == self.multiplier - 1:
-            self.multiplier = max(10, self.multiplier - 20)
-            if not self.need_foundary or self.has_foundary or ct.get_global_resources()[0] >= ct.get_foundry_cost()[0] + ct.get_builder_bot_cost()[0]:
-                if self.aggressors_spawned < 10:  # Only queue aggressor if under the limit
-                    self.spawn_queue.append(Direction.WEST)
+        # if c_r % self.multiplier == self.multiplier - 1:
+        #     self.multiplier = max(10, self.multiplier - 20)
+        #     if not self.need_foundary or self.has_foundary or ct.get_global_resources()[0] >= ct.get_foundry_cost()[0] + ct.get_builder_bot_cost()[0]:
+        #         if self.aggressors_spawned < 10:  # Only queue aggressor if under the limit
+        #             self.spawn_queue.append(Direction.WEST)
                     
 
         if bot_count < 2 + enemy_bot_count and ct.get_current_round() > 100 and (not self.need_foundary or self.has_foundary or ct.get_global_resources()[0] >= ct.get_foundry_cost()[0] + ct.get_builder_bot_cost()[0]):
@@ -52,7 +55,7 @@ class Core(EBase):
         else:
             self.no_bot_counter = 0
 
-        if self.no_bot_counter >= 15 and not self.spawn_queue:
+        if self.no_bot_counter >= min(self.map_width, self.map_height) // 2 and not self.spawn_queue:
             self.spawn_queue.append(Direction.EAST)
             self.no_bot_counter = 0
 
@@ -76,4 +79,4 @@ class Core(EBase):
         try:
             ct.get_position(self.builder_id)
         except Exception:  # need to make a new builder
-            self.spawn_queue.append(Direction.CENTRE)
+            self.spawn_queue.insert(Direction.CENTRE, 0)

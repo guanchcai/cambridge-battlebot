@@ -411,7 +411,7 @@ class Bot(EBase):
                 self.ct.build_road(candidate)
     
     def handle_thrown(self):
-        pass
+        self.distance_map = None
 
     def is_passable(self, tile: Position):
         if not checkable_position(tile, self.ct):
