@@ -18,31 +18,37 @@ class Sentinel(EBase):
         self.ct = ct
         self._fire_at_best_target()
     
-    def _score_target(self, build_id, bot_id) -> int:
-        entity_id = bot_id or build_id
-        if entity_id is None: return -1
+    def _score_target(self, tile, building_id, bot_id) -> int:
+        if not (building_id or bot_id): return -1
 
-        if self.ct.get_team(entity_id) == self.ct.get_team():
+        bot_team = bot_id and self.ct.get_team(bot_id) == self.team
+        builidng_team = building_id and self.ct.get_team(building_id) == self.team 
+        
+        if bot_team or builidng_team:
             return -1
 
-        etype = self.ct.get_entity_type(entity_id)
-
-        if etype == EntityType.HARVESTER:
-            # rot left or right
-            
-
+        etype = self.ct.get_entity_type(building_id)
+        if etype == EntityType.MARKER or etype == EntityType.HARVESTER:
             return -1
 
-        if build_id and bot_id:
-            match self.ct.get_entity_type(build_id):
-                case EntityType.CORE: return 1000
-                case EntityType.CONVEYOR:
-                    ends = self.get_ends(self.ct.get_position(build_id))
-                    if any(end and end[0] == EntityType.CORE and end[1] != self.ct.get_team() for end in ends):
-                        return 2000
-                case EntityType.MARKER: return -67676767
+        if building_id and bot_id and etype == EntityType.CORE:
+            return 1000
+        
+        if building_id and etype in CONVEYORS:
+            ends = self.get_ends(tile)
+            core = False
+            for end in ends:
+                if not end:
+                    continue
+                if end[0] in TURRETS and end[1] == self.team:
+                    return -1
+                if end[0] == EntityType.CORE and end[1] != self.team:
+                    core = True
 
-        if etype in set(VALUABLE_ENEMY_ENTITIES_ORDERED):
+            if core and self.ct.get_stored_resource(building_id):
+                return 2000
+
+        if etype in VALUABLE_ENEMY_ENTITIES_ORDERED:
             return VALUABLE_ENEMY_ENTITIES_ORDERED.index(etype) + 5
         
         return 3
@@ -54,14 +60,11 @@ class Sentinel(EBase):
 
         for tile in self.ct.get_nearby_tiles():
             if not self.ct.can_fire(tile): continue
-            for end_building in self.get_ends(tile):
-                if end_building and end_building[0] in TURRETS and end_building[1] == self.team:
-                    continue
 
             build_id = self.ct.get_tile_building_id(tile)
             bot_id = self.ct.get_tile_builder_bot_id(tile)
 
-            score = self._score_target(build_id, bot_id)
+            score = self._score_target(tile, build_id, bot_id)
             if score < 0: continue
 
             if cand is None or score > cand[1]:

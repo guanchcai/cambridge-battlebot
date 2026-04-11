@@ -5,11 +5,11 @@ from utils.constants import _SENTINEL
 from utils.helper_functions import *
 from cambc import Controller, Position, Direction, EntityType, Environment, ResourceType
 import random
-from itertools import product
 
 class Aggressor(Bot):
     def __init__(self, ct: Controller):
-        self.aggression_targets = []
+        self.harvester_targets = []
+        self.conveyor_targets = []
         self.turrets_in_range = []
 
         self.own_launcher_pos = None
@@ -18,6 +18,10 @@ class Aggressor(Bot):
         self.rounds_without_launch = 0
         self.conveyor_ends = {}
         self.listening = False
+        self.target_black_list = set()
+
+        self.current_target_type = TargetTypes.WANDER
+        self.current_target_source = None
         super().__init__(ct)
 
     def set_wandering(self):
@@ -27,154 +31,132 @@ class Aggressor(Bot):
     # def move_to_pos(self):
     #     position = self.ct.get_position()
     #     super().move_to_pos()
-    
-    def run_flood_fill(self):
-        print(f"Going from {self.ct.get_position()} to {self.current_target_position} and ignoring walls = {self.target_distance_squared == 0}")
-        self.distance_map = self.path_finder.run(
-            self.ct.get_position(),
-            self.current_target_position,
-            True, 
-            DeltaTypes.ALL, 
-            self.target_distance_squared, 
-            self.target_distance_squared == 0
-        )
 
     def update_map(self):
         self.aggression_targets = []
         self.turrets_in_range = []
+        self.harvester_targets = []
+        self.conveyor_targets = []
         self.allied_launchers = set()
         self.conveyor_ends = {}
+        if random.random() > DEMENTIA_RATE and self.target_black_list:
+            self.target_black_list.pop()
         super().update_map()
 
-        # 2: Pick best target if not already hunting
-        if self.current_state != BotState.GOING_TO_TARGET:
-            if self.aggression_targets:
-                _, best_target = max(self.aggression_targets)
-                self.set_target(best_target, 0, BotState.GOING_TO_TARGET)
-
     def update_tile(self, tile: Position, tile_data: TileData):
+        if tile_data is None:
+            return
+        
         if self.current_state == BotState.GOING_TO_TARGET and tile == self.current_target_position:
             if tile_data.bot_id and tile_data.bot_id != self.id:
                 self.set_wandering()
-            
-            if tile_data.building_id is None or tile_data.is_team_road():
-                self.target_distance_squared = 2
-                self.distance_map = None
-            else:
-                self.target_distance_squared = 0
-                self.distance_map = None
 
             if tile_data.building_type not in PASSABLE:
                 if not (tile_data.building_type == EntityType.LAUNCHER and tile_data.own_team):
                     self.set_wandering()
-    
-        if tile_data.building_id is None or (tile_data.bot_id and tile_data.bot_id != self.id):
-            return
+
+            if tile_data.building_type in CONVEYORS:
+                for ending in self.get_ends(tile):
+                    if ending and ending[0] in TURRETS and ending[1] == self.team:
+                        self.set_wandering()
         
-        if tile_data.own_team == False: # Needed cause None is also false
-            if tile_data.building_type in TURRETS:
-                self.turrets_in_range.append((tile, tile_data.building_type, self.ct.get_direction(tile_data.building_id)))
-            else:
-                self.evaluate_aggressor_target(tile, tile_data)
+        enemy_team = tile_data.building_id and not tile_data.own_team
+
+        if enemy_team and tile not in self.target_black_list: 
+            self.evaluate_aggressor_target(tile, tile_data)
         elif tile_data.building_type == EntityType.LAUNCHER:
             self.allied_launchers.add(tile)
         
     def unreachable_path(self):
         if self.current_state == BotState.WANDERING:
             return super().unreachable_path()
+        
+        self.target_black_list.add(self.current_target_position)
+        self.set_wandering()
         # Check if we already have a launcher built
-        if self.own_launcher_pos is not None:
-            own_launcher_data = self.get_from_pos(self.own_launcher_pos)
+        # if self.own_launcher_pos is not None:
+        #     own_launcher_data = self.get_from_pos(self.own_launcher_pos)
 
-            own_launcher_exists = (
-                own_launcher_data and
-                own_launcher_data.building_type == EntityType.LAUNCHER and
-                own_launcher_data.own_team
-            )
+        #     own_launcher_exists = (
+        #         own_launcher_data and
+        #         own_launcher_data.building_type == EntityType.LAUNCHER and
+        #         own_launcher_data.own_team
+        #     )
 
+        #     if not own_launcher_exists:
+        #         self.own_launcher_pos = None
+        #         self.rounds_without_launch = 0
+        #     else:
+        #         self.set_target(self.own_launcher_pos, 2, BotState.GOING_TO_TARGET)
 
-            if not own_launcher_exists:
-                self.own_launcher_pos = None
-                self.rounds_without_launch = 0
-            else:
-                self.set_target(self.own_launcher_pos, 2, BotState.GOING_TO_TARGET)
-
-        # Try to place a new launcher if we don't have one
-        if self.own_launcher_pos is None:
-            launcher_pos = self._try_build_launcher()
-            if launcher_pos:
-                self.own_launcher_pos = launcher_pos
-                self.rounds_without_launch = 0
-                self.set_target(launcher_pos, 2, BotState.GOING_TO_TARGET)
-
-    def nearest_unexplored(self) -> Position | None:
-        t_pos = self.get_enemy_base()
-            
-        return limit_to_map(
-                Position(t_pos.x + random.randint(-5, 5),
-                        t_pos.y + random.randint(-5, 5)),
+        # # Try to place a new launcher if we don't have one
+        # if self.own_launcher_pos is None:
+        #     launcher_pos = self._try_build_launcher()
+        #     if launcher_pos:
+        #         self.own_launcher_pos = launcher_pos
+        #         self.rounds_without_launch = 0
+        #         self.set_target(launcher_pos, 2, BotState.GOING_TO_TARGET)
+    
+    def set_wandering(self):
+        if not self.nearest_unexplored():
+            enemy_base_pos = self.get_enemy_base()
+            self.set_target(limit_to_map(
+                Position(enemy_base_pos.x + random.randint(-5, 5),
+                        enemy_base_pos.y + random.randint(-5, 5)),
                         self.ct
-            )
-
-    def reached_target(self):
+            ), 16, BotState.WANDERING)
+        
+    def reached_target(self):        
         if self.current_state == BotState.WANDERING:
-            self.set_wandering()
-            return
+            return super().reached_target()
         
         target_data = self.get_from_pos(self.current_target_position)
-        
-        if target_data.building_type == EntityType.LAUNCHER:
-            
-            if self.rounds_without_launch >= 3:
-                if self.ct.can_destroy(self.own_launcher_pos):
-                    self.ct.destroy(self.own_launcher_pos)
-                self.own_launcher_pos = None
-                self.rounds_without_launch = 0
-                return
-
-            self.rounds_without_launch += 1
 
         if not self.is_valid_target(self.current_target_position):
             print(f"Target is invalid {self.current_target_position}")
             self.set_wandering()
-            return            
+            return
 
         if self.ct.can_fire(self.current_target_position) and not target_data.own_team:
             self.ct.fire(self.current_target_position)
 
+        if self.position == self.current_target_position and self.ct.can_build_road(self.current_target_position):
+            self.ct.build_road(self.current_target_position)
+
         to_build = EntityType.SENTINEL
         
-        is_harvester = self.check_for_entity(self.current_target_position, CARDINAL_DIRECTIONS, EntityType.HARVESTER, other_team(self.team))
-        if is_harvester:
-            if self.check_for_entity(is_harvester, CARDINAL_DIRECTIONS, EntityType.SENTINEL, self.team):
+        if self.current_target_type == TargetTypes.AGG_HARVESTER:
+            if self.check_for_entity(self.current_target_source, CARDINAL_DIRECTIONS, EntityType.SENTINEL, self.team) or self.ct.get_tile_env(self.current_target_source) == Environment.ORE_AXIONITE:
                 to_build = EntityType.BARRIER
-
 
         match to_build:
             case EntityType.SENTINEL:
-                can_build = self.ct.get_global_resources()[0] >= self.ct.get_sentinel_cost()[0] and self.ct.get_action_cooldown() == 0
-                if can_build and (target_data.building_type in IGNORED_BUILDINGS or target_data.is_team_road):
+                can_build = self.ct.get_action_cooldown() == 0 and self.ct.get_global_resources()[0] >= self.ct.get_sentinel_cost()[0]
+                if can_build and (target_data.building_type in IGNORED_BUILDINGS or target_data.is_team_road()):
                     direction = self.current_target_position.direction_to(self.enemy_base_pos if self.enemy_base_pos else self.get_enemy_base())
-                    if is_harvester and direction == self.current_target_position.direction_to(is_harvester):
+                    if self.current_target_source and direction == self.current_target_position.direction_to(self.current_target_source):
                         direction = direction.rotate_left()
                     if self.position == self.current_target_position:
                         self.move_to_adjacent()
 
-                    if target_data.is_team_road:
-                        if self.ct.can_destroy(self.current_target_position):
-                            self.ct.destroy(self.current_target_position)
+                    if self.ct.get_action_cooldown() == 0:
+                        if target_data.is_team_road():
+                            if self.ct.can_destroy(self.current_target_position):
+                                self.ct.destroy(self.current_target_position)
 
-                    if self.ct.can_build_sentinel(self.current_target_position, direction):
-                        self.ct.build_sentinel(self.current_target_position, direction)
+                        if self.ct.can_build_sentinel(self.current_target_position, direction):
+                            self.ct.build_sentinel(self.current_target_position, direction)
             case EntityType.BARRIER:
-                can_build = self.ct.get_global_resources()[0] >= self.ct.get_barrier_cost()[0] and self.ct.get_action_cooldown() == 0
-                if can_build and (target_data.building_id is None or target_data.is_team_road):
+                can_build = self.ct.get_action_cooldown() == 0 and self.ct.get_global_resources()[0] >= self.ct.get_barrier_cost()[0] and self.ct.get_action_cooldown() == 0
+                if can_build and (target_data.building_id is None or target_data.is_team_road()):
                     if self.position == self.current_target_position:
                         self.move_to_adjacent()
-                    if target_data.is_team_road and self.ct.can_destroy(self.current_target_position):
+                    if target_data and target_data.is_team_road() and self.ct.can_destroy(self.current_target_position):
                         self.ct.destroy(self.current_target_position)
                     if self.ct.can_build_barrier(self.current_target_position):
                         self.ct.build_barrier(self.current_target_position)
+                        if target_data.environment in ORE_SITES:
+                            self.visited_ore_sites.add(self.current_target_position)
 
 
     def evaluate_aggressor_target(self, tile: Position, tile_data: TileData):
@@ -183,13 +165,14 @@ class Aggressor(Bot):
                 check_pos = tile.add(d)
                 if not checkable_position(check_pos, self.ct):
                     continue
-                tile_data = self.get_from_pos(check_pos)
-                if tile_data.bot_id and tile_data.bot_id != self.id:
-                    continue
-                if tile_data.environment != Environment.WALL and (tile_data.building_type in IGNORED_BUILDINGS or tile_data.building_type == EntityType.ROAD):
-                    self.aggression_targets.append((100, check_pos, tile_data))
-                # elif b_entity in PASSABLE and b_entity != EntityType.CORE:
-                #     self.aggression_targets.append((50, check_pos))
+                check_data = self.get_from_pos(check_pos)
+                if check_data:
+                    if check_data.bot_id and check_data.bot_id != self.id:
+                        continue
+                    if check_data.passable(self.ct):
+                        self.harvester_targets.append((check_pos, tile))
+                        if self.current_target_type != TargetTypes.AGG_HARVESTER:
+                            self.set_wandering()
 
             """
                 50: harvesters next to a passable (conveyors for example) this can be toned back down
@@ -200,16 +183,6 @@ class Aggressor(Bot):
             resource = self.ct.get_stored_resource(tile_data.building_id)
             eval = 0
             target_tile = tile
-
-            conveyor_end = self.get_ends(tile)
-            if not conveyor_end:
-                return
-            
-            for end_building in conveyor_end:
-                if end_building is None:
-                    return
-                if end_building[1] == self.team and (end_building[0] in TURRETS or end_building[0] == EntityType.BUILDER_BOT):
-                    return
 
             match resource:
                 case ResourceType.REFINED_AXIONITE:
@@ -222,7 +195,7 @@ class Aggressor(Bot):
             conveyor_target = get_conveyor_target(tile, self.ct)
             if conveyor_target and checkable_position(conveyor_target, self.ct):
                 b_id = self.ct.get_tile_builder_bot_id(conveyor_target)
-                if b_id is None and get_entity(conveyor_target, self.ct) in IGNORED_BUILDINGS:
+                if (b_id is None or self.ct.get_team(b_id) != self.team) and get_entity(conveyor_target, self.ct) in IGNORED_BUILDINGS:
                     eval += 8
                     target_tile = conveyor_target
             # if is_directly_connected_to_turret(tile, other_team(self.team), self.ct):
@@ -242,48 +215,53 @@ class Aggressor(Bot):
                 20: refined axiomnite connecting to nothing
             """
             
-            self.aggression_targets.append((eval, target_tile))
+            self.conveyor_targets.append((eval, target_tile))
         
-        if tile_data.bot_id or not tile_data.building_id:
+        if tile_data and (tile_data.bot_team == self.team or not tile_data.building_id):
             return # Do not target ones that have a bot on them
         
-        if tile_data.building_type == EntityType.HARVESTER:
+        if tile_data and tile_data.building_type == EntityType.HARVESTER:
             evaluate_harvesters()
         elif self.enemy_base_pos and tile.distance_squared(self.enemy_base_pos) <= SENTINEL_RANGE and tile_data.building_type in CONVEYORS:
             evaluate_conveyors()
 
-    def _try_build_launcher(self):
-        if self.allied_launchers:
-            return min(self.allied_launchers, key=lambda p: self.position.distance_squared(p))
+    # def _try_build_launcher(self):
+    #     if self.allied_launchers:
+    #         return min(self.allied_launchers, key=lambda p: self.position.distance_squared(p))
 
-        pos_data = self.get_from_pos(self.position)
-        if pos_data and not pos_data.own_team and pos_data.building_id:
-            if self.ct.can_fire(self.position):
-                self.ct.fire(self.position)
+    #     pos_data = self.get_from_pos(self.position)
+    #     if pos_data and not pos_data.own_team and pos_data.building_id:
+    #         if self.ct.can_fire(self.position):
+    #             self.ct.fire(self.position)
         
-        if pos_data and pos_data.is_team_road():
-            if self.ct.can_destroy(self.position):
-                self.ct.destroy(self.position)
+    #     if pos_data and pos_data.is_team_road():
+    #         if self.ct.can_destroy(self.position):
+    #             self.ct.destroy(self.position)
         
-        can_build = self.ct.get_global_resources()[0] >= self.ct.get_launcher_cost()[0] and self.ct.get_action_cooldown() == 0
-        if can_build:
-            self.move_to_adjacent()
-            if self.ct.can_build_launcher(self.position):
-                self.ct.build_launcher(self.position)
-                return self.position
+    #     can_build = self.ct.get_global_resources()[0] >= self.ct.get_launcher_cost()[0] and self.ct.get_action_cooldown() == 0
+    #     if can_build:
+    #         self.move_to_adjacent()
+    #         if self.ct.can_build_launcher(self.position):
+    #             self.ct.build_launcher(self.position)
+    #             return self.position
     
     def move_to_pos(self):
         if self.previous_position and self.previous_position.distance_squared(self.position) > 2:
             self.handle_thrown()
-        return super().move_to_pos()
+        super().move_to_pos()
+        
+        if get_skibidi_distance(self.ct.get_position(), self.current_target_position) <= 1:
+            self.reached_target()
         
     def handle_thrown(self):
         self.rounds_without_launch = 0
         if self.is_valid_target(self.position):
             self.set_target(self.position, 0, BotState.GOING_TO_TARGET)
             self.reached_target()
+        else:
+            self.distance_map = None
 
-    def get_ends(self, pos: Position) -> list[tuple[EntityType, Team] | None]:
+    def get_ends(self, pos: Position) -> list[tuple[EntityType, Position, Team] | None]:
         if not checkable_position(pos, self.ct):
             return [None] # None signifies going out of bounds
 
@@ -305,11 +283,11 @@ class Aggressor(Bot):
         elif building_entity in IGNORED_BUILDINGS or building_entity == EntityType.ROAD:
             bot_id = self.ct.get_tile_builder_bot_id(pos)
             if bot_id:
-                self.conveyor_ends[pos] = [(EntityType.BUILDER_BOT, self.ct.get_team(building_id))]
+                self.conveyor_ends[pos] = [(EntityType.BUILDER_BOT, pos, self.ct.get_team(building_id))]
             else:
-                self.conveyor_ends[pos] = [(EntityType.MARKER, Team.A)]
+                self.conveyor_ends[pos] = [(EntityType.MARKER, pos, Team.A)]
         else:
-            self.conveyor_ends[pos] = [(building_entity, self.ct.get_team(building_id))]
+            self.conveyor_ends[pos] = [(building_entity, pos, self.ct.get_team(building_id))]
         
         return self.conveyor_ends[pos]
     
@@ -337,26 +315,69 @@ class Aggressor(Bot):
     def is_valid_target(self, pos: Position) -> bool:
         tile_data = self.get_from_pos(pos)
         if tile_data is None:
+            print("Tile not readable yet!")
             return False
         etype = tile_data.building_type
         if etype in CONVEYORS and not tile_data.own_team:
+            ending_buildings = self.get_ends(pos)
+            for e_b in ending_buildings:
+                if not e_b:
+                    continue
+                if e_b[0] in TURRETS and e_b[2] == self.team:
+                    return False 
+            print("Enemy conveyor, is target")
             return True
         if etype == EntityType.LAUNCHER and tile_data.own_team:
+            print("Allied launchers, is target")
             return True
         if etype in IGNORED_BUILDINGS or etype == EntityType.ROAD:
+            print("Empty space, checking for harvesters or conveyors pointing...")
+            
+            for d in CARDINAL_DIRECTIONS:
+                check_pos = pos.add(d)
+                if not checkable_position(check_pos, self.ct):
+                    continue
+                check_data = self.get_from_pos(check_pos)
+                if check_data and check_data.building_type == EntityType.HARVESTER:
+                    print("Has harvester next to it")
+                    return True
             for d in BRIDGE_DELTAS:
                 check_pos = Position(pos.x + d[0], pos.y + d[1])
                 if not checkable_position(check_pos, self.ct):
                     continue
-                check_data = self.get_from_pos(check_pos)
-                if check_data is None:
+                
+                end = self.get_ends(check_pos)
+                if not end:
                     continue
-                if get_conveyor_target(check_pos, self.ct) == pos:
-                    return True
-                if d in CARDINAL_DELTAS and check_data.building_type == EntityType.HARVESTER:
+                for ending_info in end:
+                    if ending_info is None:
+                        continue
+                    if ending_info[1] != pos:
+                        continue
                     return True
         return False
     
+    def set_target(self, target_pos, distance_squared, state, target_type=TargetTypes.WANDER):
+        self.current_target_type = target_type
+        super().set_target(target_pos, distance_squared, state)
+
+    def nearest_unexplored(self) -> Position | None:
+        filtered_harvester_targets = list(filter(lambda x: x[0] not in self.target_black_list, self.harvester_targets))
+        if filtered_harvester_targets:
+            target, source = filtered_harvester_targets[0]
+            self.current_target_source = source
+            self.set_target(target, 0, BotState.GOING_TO_TARGET, TargetTypes.AGG_HARVESTER)
+            return target
+        
+        filtered_conveyor_targets = list(filter(lambda x: x[1] not in self.target_black_list, self.conveyor_targets))
+        if filtered_conveyor_targets:
+            _, target = max(filtered_conveyor_targets, key=lambda x: x[0])
+            self.set_target(target, 0, BotState.GOING_TO_TARGET, TargetTypes.AGG_DISCONNECTED_CONVEYOR)
+            return target
+        
+    def unreachable_path(self):
+        self.target_black_list.add(self.current_target_position)
+        self.set_wandering()
 """
                                -=::.         . .         ..                     .                     ............:::::::.........
                       -+=-:::-+:                                                                       ...........................
@@ -397,7 +418,7 @@ class Aggressor(Bot):
 -==+%++#@@@@@@@@%#*#%%%%%%%%@@-.-++=---:..:::....:%@@%#**####=+=--=#%-=:..*+.:-====-===---===+*+*+*#%#%%=..  .  ..........:::-::::
 -+#**#+*@%@@@@@@@#%%@@@@@%@@@##+. ..:-:..:::.. ..-@#@@####%%#-===+@%*-.   =+.:-:-:::-::=::+====-+*+*#%%%=... .  .......::::::-::::
 *#++##%@@%@@@@@@@@@@@@@@@@@@%+:+*::=+-:::::...  .+%#@@#%##%%*=-=#@#*+=.   .-....... .  . .. :...-===+=*+:.    ......::::----------
-==+*=+**@@@@@@@@@@@@@@@@@@@@+-..-*@*#=:-:::..   :#+#@%#%*#@%+==%%**+++=:.                  .....:::===-..     .....::------=====--
+==+*=+**@@@@@@@@@@@@@@@@@@@@+-..-*@*#=:-:::..   :#+#@%#%*#@%+==%%**+++=:.     einstein      .....:::===-..     .....::------=====--
 ==*+=*#*@@@@@@@@@@@@@@@@@@@#-:.:==%=+#=-:...    :#+@%*#%#%@#+#@@#*+++++=:               ...:-=+++**=:.   .   ....::---===++++++==-
 -**==#+#%#@@@@@@@@@@@@@@@@@===:==--#==%-...     .+%%+*%%#@%#@@@%#++++++++:           ..-=++*+++*-..   ..  .....:::---==++******+=-
 =*++*=-+@%@@@@@@@@@@@@@@@@*=--+==+#==-:=- .      =@**#%%@%%@@@@%#+++++++++-             .:.:-+-.....     .....::---==++*######*+--

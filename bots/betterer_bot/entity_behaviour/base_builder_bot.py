@@ -25,6 +25,10 @@ class BaseBuilder(Bot):
                 self.set_target(tile, 2, BotState.GOING_TO_TARGET)
         
         if max(del_x, del_y) == 2 and tile_data.environment == Environment.EMPTY:
+            is_damaged = tile_data.own_team and self.ct.get_hp(tile_data.building_id) != self.ct.get_max_hp(tile_data.building_id)
+            if is_damaged:
+                self.potential_targets.append(tile)
+
             if entitytype in IGNORED_BUILDINGS or tile_data.is_team_road():
                 self.potential_targets.append(tile)
             elif entitytype == EntityType.SPLITTER and same_team:
@@ -53,7 +57,7 @@ class BaseBuilder(Bot):
     def build_road(self, move_pos: Position, next_pos: Position) -> bool:
         del_x = abs(move_pos.x - self.position.x)
         del_y = abs(move_pos.y - self.position.y)
-        if self.position.distance_squared(self.current_target_position) <= 2:
+        if get_skibidi_distance(self.position, self.current_target_position) <= 1 and self.current_state == BotState.GOING_TO_TARGET:
             if self.ct.get_action_cooldown() == 0:
                 self.reached_target()
             return
@@ -66,18 +70,10 @@ class BaseBuilder(Bot):
             return super().build_road(move_pos, next_pos)
         return True
     
-    def run_flood_fill(self):
-        print(f"Going from {self.position} to {self.current_target_position}")
-        self.distance_map = self.path_finder.run(
-            self.position,
-            self.current_target_position,
-            self.target_distance_squared, 
-            self.ct,
-            False
-        )
-    
     def reached_target(self):
         print("Reached target")
+        if self.current_state == BotState.WANDERING:
+            return
         del_x = abs(self.current_target_position.x - self.base_position.x)
         del_y = abs(self.current_target_position.y - self.base_position.y)
         tile_data = self.get_from_pos(self.current_target_position)
@@ -132,7 +128,7 @@ class BaseBuilder(Bot):
         return self.base_position
     
     def set_wandering(self):
-        self.set_target(self.ct.get_position(), 0, BotState.WANDERING)
+        self.set_target(self.base_position, 0, BotState.WANDERING)
 
 """                                                                                                                               
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@#-.                       .=#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@

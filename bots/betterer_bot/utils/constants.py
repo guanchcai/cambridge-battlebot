@@ -29,21 +29,22 @@ TURRETS = {EntityType.SENTINEL, EntityType.GUNNER, EntityType.BREACH}
 IGNORED_BUILDINGS = {EntityType.MARKER, None}
 CAN_BUILD_OVER = {EntityType.MARKER, None, EntityType.ROAD}
 CARDINAL_DELTAS = [
-    (0, 1, 0), 
-    (0, -1, 0), 
-    (1, 0, 0), 
-    (-1, 0, 0)
+    (0, 1, 0.3), 
+    (0, -1, 0.3), 
+    (1, 0, 0.3), 
+    (-1, 0, 0.3)
 ]
 DIAGONAL_DELTAS = [
-    (1, 1, 0.1), 
-    (-1, -1, 0.1), 
-    (1, -1, 0.1), 
-    (-1, 1, 0.1)
+    (1, 1, 0.3), 
+    (-1, -1, 0.3), 
+    (1, -1, 0.3), 
+    (-1, 1, 0.3)
 ]
 ALL_DELTAS = CARDINAL_DELTAS + DIAGONAL_DELTAS
-BRIDGE_PENALTY = 6
+BRIDGE_PENALTY = 4
 BRIDGE_DELTAS = [(dx, dy, BRIDGE_PENALTY) for dx in range(-3, 4) for dy in range(-3, 4) if 1 < dx*dx + dy*dy <= 9]
-
+EXPLORE_TIMER = 12
+DEMENTIA_RATE = 0.9
 class BotState(Enum):
     GOING_TO_TARGET = 1
     WANDERING = 2
@@ -55,15 +56,24 @@ class DeltaTypes(Enum):
     ALL = 2
     BRIDGE = 3
 
-BASE_DIST = 20
+BASE_DIST = 18
 FOUNDARY_THRESHHOLD = 600
 class TargetTypes(Enum):
     CONNECT_BRIDGE = 0
     BASE = 1
     ORE = 2
     WANDER = 3
+    REPAIR = 4
+    AGG_HARVESTER = 5
+    AGG_DISCONNECTED_CONVEYOR = 6
+    REMOVAL = 7
 
 TURRET_THREAT_RADIUS = 2
 _SENTINEL = object()
 
 SENTINEL_RANGE = 26 # 5 ** 2
+
+class PathfindStatus(Enum):
+    SUCCESS = 0
+    FAILURE = 1
+    TIMEOUT = 2

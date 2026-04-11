@@ -1,3 +1,5 @@
+from collections import deque
+
 from entity_behaviour.entity_base import EBase
 from cambc import Controller, Position, Environment, EntityType
 from utils.constants import *
@@ -36,6 +38,10 @@ class Bot(EBase):
         self.unexplored = set()
         self.buckets = {}
         self.bucket_size = 16
+        self.broken_wall = None
+
+        # Pathfinder variables
+        self.pathfind_status = PathfindStatus.SUCCESS
 
         self.position = ct.get_position()
 
@@ -53,6 +59,13 @@ class Bot(EBase):
     def run_tick(self, ct: Controller):
         self.ct = ct
         self.position = ct.get_position()
+
+        if self.pathfind_status == PathfindStatus.TIMEOUT:
+            self.run_flood_fill()
+            
+        if self.pathfind_status == PathfindStatus.TIMEOUT:
+            return
+
         self.update_map()
         print(f"开始计时 {ct.get_cpu_time_elapsed()}")
         self.move_to_pos()
@@ -66,12 +79,14 @@ class Bot(EBase):
             if ct.can_place_marker(pos):
                 ct.place_marker(pos, encode_coordinate(self.base_position, self.x_axis_symmetry, self.y_axis_symmetry, self.rotational_symmetry))
         
-            if ct.can_heal(self.position):
-                ct.heal(self.position)
+            if ct.can_heal(pos):
+                ct.heal(pos)
 
 
     def update_map(self):
         for t in self.ct.get_nearby_tiles():
+            if not self.ct.is_in_vision(t):
+                continue
             # Store all tile data
             building_id = self.ct.get_tile_building_id(t)
             building_entity = self.ct.get_entity_type(building_id) if building_id else None
@@ -80,7 +95,7 @@ class Bot(EBase):
             bot_team = self.ct.get_team(bot_id) if bot_id else None
             env = self.ct.get_tile_env(t)
 
-            tile = TileData(env, building_id, building_entity, same_team, bot_id, bot_team)
+            tile = TileData(t, env, building_id, building_entity, same_team, bot_id, bot_team)
 
             self.check_symmetry(t, tile)
             self.add_symmetry_tile(t, tile)
@@ -95,10 +110,11 @@ class Bot(EBase):
                 
             self.update_tile(t, tile)
 
-            if not (tile.passable() or tile.bot_id == self.id or tile.destroyable()) and self.distance_map and t in self.distance_map and t != self.current_target_position:
+            if not (tile.passable(self.ct) or tile.bot_id == self.id or tile.destroyable()) and self.distance_map and t in self.distance_map and t != self.current_target_position:
                 print(f"Encountered wall at {t}")
-                print(tile.building_type)
-                print(self.get_from_pos(t).destroyable())
+                self.distance_map = None
+            if self.distance_map and t in self.distance_map and self.current_target_position != self.base_position and not (tile.passable(self.ct) or tile.bot_id == self.id or tile.destroyable()):
+                print(f"Encountered wall at {t}")
                 self.distance_map = None
 
             self.unexplored.discard(t)
@@ -152,11 +168,15 @@ class Bot(EBase):
         
         print(f"Build road start {self.ct.get_cpu_time_elapsed()}")
         build_success = self.build_road(move_pos, self.distance_map[1] if len(self.distance_map) > 1 else None)
-        chosen = self.position.direction_to(move_pos)
         print(f"Build road finish {self.ct.get_cpu_time_elapsed()}")
-        if self.ct.can_move(chosen) and build_success:
-            self.ct.move(chosen)
-            self.previous_position = self.position if self.previous_position != self.position else self.previous_position
+        if build_success:
+            if move_pos.distance_squared(self.position) > 2:
+                self.distance_map = None
+            else:
+                chosen = self.position.direction_to(move_pos)
+                if self.ct.can_move(chosen):
+                    self.ct.move(chosen)
+                    self.previous_position = self.position if self.previous_position != self.position else self.previous_position
         
         
         if self.ct.get_current_round() < 50 and get_entity(self.position, self.ct) == EntityType.ROAD and self.ct.can_destroy(self.position):
@@ -170,8 +190,19 @@ class Bot(EBase):
 
     def build_road(self, move_pos: Position, next_pos: Position):
         move_pos_data = self.get_from_pos(move_pos)
+        self.broken_wall_data = self.get_from_pos(self.broken_wall) if self.broken_wall else None
+
+        if self.broken_wall_data and (self.broken_wall_data.is_team_road() or self.broken_wall_data.building_type in IGNORED_BUILDINGS):
+            if self.ct.can_destroy(self.broken_wall):
+                self.ct.destroy(self.broken_wall)
+                if self.ct.can_build_barrier(self.broken_wall):
+                    self.ct.build_barrier(self.broken_wall)
+                    self.broken_wall = None
+        if move_pos == self.position:
+            return True
         if move_pos_data and move_pos_data.destroyable() and self.ct.can_destroy(move_pos):
             self.ct.destroy(move_pos)
+            self.broken_wall = move_pos
         if self.ct.can_build_road(move_pos):
             self.ct.build_road(move_pos)
         
@@ -194,7 +225,7 @@ class Bot(EBase):
 
     def run_flood_fill(self):
         print(f"Going from {self.position} to {self.current_target_position}")
-        self.distance_map = self.path_finder.run(
+        self.pathfind_status, self.distance_map = self.path_finder.run(
             self.position,
             self.current_target_position,
             self.target_distance_squared,
@@ -204,34 +235,57 @@ class Bot(EBase):
     
     def reached_target(self):
         self.set_wandering()
+    
+    def get_current_ring(self) -> int:
+        """Returns the furthest ring index that still has unexplored buckets."""
+        if not self.buckets:
+            return 0
+        
+        # Group buckets by their ring (distance from base bucket)
+        base_bx = self.base_position.x // self.bucket_size
+        base_by = self.base_position.y // self.bucket_size
 
-    def score_tile(self, tile: Position, wrt_enemy_base=False):
-        dist_to_self = self.position.distance_squared(tile)
-        dist_to_base = self.base_position.distance_squared(tile) if not wrt_enemy_base else self.enemy_base_pos.distance_squared(tile)
-        return self.bum_factor * dist_to_self + (1-self.bum_factor) * dist_to_base
+        # Find the smallest ring that still has buckets
+        min_ring = math.inf
+        for b in self.buckets.keys():
+            ring = max(abs(b[0] - base_bx), abs(b[1] - base_by))  # Chebyshev distance
+            if ring < min_ring:
+                min_ring = ring
+        
+        return min_ring if min_ring != math.inf else 0
 
     def nearest_unexplored(self) -> Position | None:
-        # best_tile = min(self.unexplored, key=lambda t: self.score_tile(t), default=None)
-        # return best_tile
-        # return Position(random.randint(0, self.map_width - 1), random.randint(0, self.map_height - 1))
-        
         if not self.buckets:
             return Position(random.randint(0, self.map_width - 1), random.randint(0, self.map_height - 1))
 
-        bx, by = self.position.x // self.bucket_size, self.position.y // self.bucket_size
+        base_bx = self.base_position.x // self.bucket_size
+        base_by = self.base_position.y // self.bucket_size
 
-        # Find the closest bucket by Chebyshev distance, break ties randomly
+        current_ring = self.get_current_ring()
 
-        # best_bucket = min(
-        #     self.buckets.keys(),
-        #     key=lambda b: (max(abs(b[0] - bx), abs(b[1] - by)), random.random())
-        # )
-        best_bucket = min(
-            self.buckets.keys(),
-            key=lambda b: (self.score_tile(Position(
+        # Group remaining buckets by ring
+        ring_buckets = {}
+        for b in self.buckets.keys():
+            ring = max(abs(b[0] - base_bx), abs(b[1] - base_by))
+            if ring not in ring_buckets:
+                ring_buckets[ring] = []
+            ring_buckets[ring].append(b)
+
+        # Pick the innermost ring that still has buckets
+        # If current ring is fully explored, move to next
+        target_ring = min(ring_buckets.keys())
+
+        # Within the target ring, pick the bucket closest to self
+        def bucket_score(b):
+            center = Position(
                 b[0] * self.bucket_size + self.bucket_size // 2,
                 b[1] * self.bucket_size + self.bucket_size // 2
-            )), random.random())
+            )
+            return self.position.distance_squared(center)
+
+        best_bucket = min(
+            ring_buckets[target_ring],
+            key=lambda b: (bucket_score(b), random.random())
         )
 
         return min_with_random_tiebreak(
@@ -239,6 +293,28 @@ class Bot(EBase):
             key=lambda c: self.position.distance_squared(c)
         )
 
+        # start_x = self.base_position.x // self.bucket_size
+        # start_y = self.base_position.y // self.bucket_size
+
+        # vis = set()
+        # queue = deque([(start_x, start_y)])
+        # vis.add((start_x, start_y))
+
+        # while queue:
+        #     bx,by = queue.popleft()
+
+        #     if (bx,by) in self.buckets:
+        #         return Position(
+        #             min(bx*self.bucket_size+self.bucket_size//2, self.map_width-1),
+        #             min(by*self.bucket_size+self.bucket_size//2, self.map_height-1)
+        #         )
+        #     for dx,dy,_ in CARDINAL_DELTAS:
+        #         nb = (bx+dx, by+dy)
+        #         if nb not in vis:
+        #             vis.add(nb)
+        #             queue.append(nb)
+
+        # return Position(random.randint(0, self.map_width - 1), random.randint(0, self.map_height - 1))
     
     def update_tile(self, tile: Position, tile_data: TileData):
         pass
@@ -302,9 +378,10 @@ class Bot(EBase):
             self.enemy_base_pos = Position(w - self.base_position.x, h - self.base_position.y)
         
         if self.get_from_pos(ref_tile_x, ref_tile_y) is None:
-            tile_data = TileData(tile_data.environment)
+            sym_tile = Position(ref_tile_x, ref_tile_y)
+            tile_data = TileData(sym_tile, tile_data.environment)
             self.set_from_pos(ref_tile_x, ref_tile_y, tile_data)
-            self.update_tile(Position(ref_tile_x, ref_tile_y), tile_data)
+            self.update_tile(sym_tile, tile_data)
 
     def set_target(self, target_pos: Position, distance_squared: int, state: BotState):
         self.current_target_position = target_pos
@@ -332,8 +409,6 @@ class Bot(EBase):
         if candidate:
             if self.ct.can_build_road(candidate):
                 self.ct.build_road(candidate)
-            if self.ct.can_move(d):
-                self.ct.move(d)
     
     def handle_thrown(self):
         pass
@@ -342,7 +417,7 @@ class Bot(EBase):
         if not checkable_position(tile, self.ct):
             return True
         to_check = self.get_from_pos(tile)
-        return to_check is None or to_check.bot_id == self.id or to_check.passable() or to_check.destroyable()
+        return to_check is None or to_check.bot_id == self.id or to_check.passable(self.ct) or to_check.destroyable()
         
     def get_positions_of_entities(self, origin, radius_sq, entity_type, team):
         results = []

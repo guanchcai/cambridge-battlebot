@@ -45,11 +45,16 @@ class Launcher(EBase):
                 self.y_sym = y_s and self.y_sym
                 self.r_sym = r_s and self.r_sym
             
+            closer_to_base = self.base_position and self.original_position.distance_squared(self.base_position) <= self.original_position.distance_squared(self.get_enemy_base())
+
             if entity_type == EntityType.ROAD and self.ct.is_tile_passable(entity_pos):
                 self.enemy_targets.append((1, entity_pos, entity_type))
 
-            elif entity_type == EntityType.BUILDER_BOT and entity_pos.distance_squared(self.ct.get_position()) <= 2 and get_entity(entity_pos, self.ct) != EntityType.CORE:
-                self.can_launch.append(entity_id)
+            elif entity_type == EntityType.BUILDER_BOT and get_skibidi_distance(self.original_position, entity_pos) <= 1:
+                if same_team and not closer_to_base:
+                    self.can_launch.append(entity_id)
+                else:
+                    self.can_launch.append(entity_id)
 
     def launch_bots(self):
         def launch_enemy_bots():
