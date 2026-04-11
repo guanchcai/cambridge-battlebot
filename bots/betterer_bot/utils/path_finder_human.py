@@ -18,8 +18,6 @@ class AStarPathfinder:
         self.ct = None
         self._cache = None
 
-        area = self.area
-
     def heuristic(self, i1, i2):
         y1, x1 = divmod(i1, self.w)
         y2, x2 = divmod(i2, self.w)
@@ -52,6 +50,7 @@ class AStarPathfinder:
         if cand_id < 0 or cand_id >= self.area:
             return
         return cand_id
+    
     def run(
         self, 
         start: Position, 

@@ -79,4 +79,4 @@ class Core(EBase):
         try:
             ct.get_position(self.builder_id)
         except Exception:  # need to make a new builder
-            self.spawn_queue.insert(Direction.CENTRE, 0)
+            self.spawn_queue.insert(0, Direction.CENTRE) 
