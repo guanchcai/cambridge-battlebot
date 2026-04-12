@@ -100,9 +100,10 @@ class LogisticsBot(Bot):
         
         if tile_data and tile_data.building_type == EntityType.HARVESTER and tile_data.own_team:
             can_build_sentinel = False
-            if all([turret.target_distance_squared(tile) >= SENTINEL_RANGE / 2 for turret in self.turrets]): # Tweak number
+            if all([turret.distance_squared(tile) >= SENTINEL_RANGE / 2 for turret in self.turrets]): # Tweak number
                 can_build_sentinel = True
-
+            can_guard = set()
+            nearby_bot = False
             for d in CARDINAL_DIRECTIONS:
                 check_pos = tile.add(d)
                 if not checkable_position(check_pos, self.ct):
@@ -114,10 +115,16 @@ class LogisticsBot(Bot):
                     if self.current_target_type != TargetTypes.REMOVAL: # i want guancheng to edge me until i cry
                         self.set_wandering()
                 
-                if can_build_sentinel and check_info and (check_info.building_type in IGNORED_BUILDINGS or check_info.building_type == EntityType.ROAD or check_info.destroyable()):
-                    self.to_guard.add(check_pos)
-                    if self.current_target_type != TargetTypes.SENTINEL and self.current_target_type != TargetTypes.REMOVAL and self.current_target_type != TargetTypes.REPAIR and self.current_target_type != TargetTypes.CONNECT_BRIDGE:
-                        self.set_wandering()
+                can_guard.add(check_pos)
+                if check_info and check_info.bot_team == self.team:
+                    nearby_bot = True
+            
+            if not nearby_bot and can_guard:
+                if tile_data.environment == Environment.ORE_TITANIUM:
+                    if can_build_sentinel and check_info and (check_info.building_type in IGNORED_BUILDINGS or check_info.building_type == EntityType.ROAD or check_info.destroyable()):
+                        self.to_guard.add(next(iter(can_guard)))
+                        if self.current_target_type != TargetTypes.SENTINEL and self.current_target_type != TargetTypes.REMOVAL and self.current_target_type != TargetTypes.REPAIR and self.current_target_type != TargetTypes.CONNECT_BRIDGE:
+                            self.set_wandering()
                     
 
         if tile_data and tile_data.building_type in TURRETS:
@@ -126,11 +133,10 @@ class LogisticsBot(Bot):
         ### 2. is it valid or nah
 
         if tile_data and tile_data.building_type not in INVALID_CONTAINERS:
-            print(f"Added {tile} to checked")
             self.pending_checks.discard(tile)
             self.checked.add(tile)
         else:
-            print(f"Tile {tile} is not being added")
+            pass
 
         if (
             self.current_state == BotState.GOING_TO_TARGET and
@@ -156,12 +162,16 @@ class LogisticsBot(Bot):
                         self.set_wandering()
                 case TargetTypes.SENTINEL:
                     guard_data = self.get_from_pos(self.current_target_position)
-                    if guard_data is None or not(guard_data.building_type in IGNORED_BUILDINGS or guard_data.building_type == EntityType.ROAD or guard_data.destroyable()):
+                    if guard_data is None or not((guard_data.bot_id == self.id) or guard_data.building_type in IGNORED_BUILDINGS or guard_data.building_type == EntityType.ROAD or guard_data.destroyable()):
+                        self.set_wandering()
+                    elif any([turret.distance_squared(tile) < SENTINEL_RANGE / 2 for turret in self.turrets]):
+                        self.set_wandering()
+                    elif guard_data.bot_team == self.team:
                         self.set_wandering()
 
     def move_to_pos(self):
         super().move_to_pos()
-        if self.ct.get_position().distance_squared(self.current_target_position) <= 2 and self.current_target_type == TargetTypes.REMOVAL:
+        if self.ct.get_position().distance_squared(self.current_target_position) <= 2 and (self.current_target_type == TargetTypes.REMOVAL or self.current_target_type == TargetTypes.SENTINEL):
             self.reached_target()
         
 
@@ -280,17 +290,20 @@ class LogisticsBot(Bot):
                     # Already removed
                     self.set_wandering()
             case TargetTypes.SENTINEL:
-                can_build = self.ct.get_global_resources()[0] < self.ct.get_sentinel_cost()[0] and self.ct.get_action_cooldown() == 0
+                can_build = self.ct.get_global_resources()[0] >= self.ct.get_sentinel_cost()[0] and self.ct.get_action_cooldown() == 0
+            
                 if can_build and (target_data.building_type == None or target_data.is_team_road() or target_data.destroyable()):
                     if self.position == self.current_target_position:
                         self.move_to_adjacent()
                     
-                    if self.ct.can_destroy(self.current_target_position):
+                    if self.ct.can_destroy(self.current_target_position) and (target_data.destroyable() or target_data.is_team_road()) and self.ct.get_position() != self.current_target_position:
                         self.ct.destroy(self.current_target_position)
                     
-                    facing = self.base_position.direction_to(self.harvester_pos)
+                    facing = random.choice(list(DIAGONAL_DIRECTIONS))
+                    print(f"Can build sent: {self.ct.can_build_sentinel(self.current_target_position, facing)}")
                     if self.ct.can_build_sentinel(self.current_target_position, facing):
-                        self.ct.build_sentinel(self.current_target_position.fac )
+                        self.ct.build_sentinel(self.current_target_position, facing)
+                        self.set_wandering()
                 
     def nearest_unexplored(self):
         print("Finding nearest unexplored")
