@@ -39,7 +39,7 @@ class Core(EBase):
         if c_r in {min(self.map_width, self.map_height) // 2, 500, 1000, 1500}:
             self.spawn_queue.append(Direction.EAST)
         
-        if c_r in {50, 60, 200, 500, 1000, 1100, 1200, 1300, 1400, 1500}:
+        if c_r in {50, 200, 500, 1000, 1100, 1200, 1300, 1400, 1500}:
             self.spawn_queue.append(Direction.WEST)
 
 
@@ -69,8 +69,8 @@ class Core(EBase):
 
                 if spawn_dir == Direction.CENTRE:
                     self.builder_id = id
-                elif spawn_dir == Direction.WEST:
-                    self.aggressors_spawned += 1  # Increment aggressor count on spawn
+                # elif spawn_dir == Direction.WEST:
+                #     self.aggressors_spawned += 1  # Increment aggressor count on spawn
 
         ti, ax = ct.get_global_resources()
         if ct.get_current_round() < 1000 and ax > 1:
@@ -79,4 +79,4 @@ class Core(EBase):
         try:
             ct.get_position(self.builder_id)
         except Exception:  # need to make a new builder
-            self.spawn_queue.insert(Direction.CENTRE, 0)
+            self.spawn_queue.insert(0, Direction.CENTRE) 

@@ -45,8 +45,6 @@ class Bot(EBase):
 
         self.position = ct.get_position()
 
-        self.bum_factor = 0.5 # 0 to 1
-
         for x in range(self.map_width):
             for y in range(self.map_height):
                 p = Position(x, y)
@@ -384,10 +382,11 @@ class Bot(EBase):
             self.update_tile(sym_tile, tile_data)
 
     def set_target(self, target_pos: Position, distance_squared: int, state: BotState):
+        if self.current_target_position != target_pos:
+            self.distance_map = None
         self.current_target_position = target_pos
         self.target_distance_squared = distance_squared
         self.current_state = state
-        self.distance_map = None
 
     def set_wandering(self):
         self.set_target(self.base_position, 16, BotState.WANDERING)
@@ -396,9 +395,9 @@ class Bot(EBase):
         candidate = []
         for d in directions_allowed:
             check_pos = self.position.add(d)
-            check_data = self.get_from_pos(check_pos)
             if not checkable_position(check_pos, self.ct):
                 continue
+            check_data = self.get_from_pos(check_pos)
             if check_data and check_data.environment != Environment.WALL:
                 if self.ct.can_move(d):
                     self.ct.move(d)

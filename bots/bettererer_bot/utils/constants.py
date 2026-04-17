@@ -43,7 +43,7 @@ DIAGONAL_DELTAS = [
 ALL_DELTAS = CARDINAL_DELTAS + DIAGONAL_DELTAS
 BRIDGE_PENALTY = 4
 BRIDGE_DELTAS = [(dx, dy, BRIDGE_PENALTY) for dx in range(-3, 4) for dy in range(-3, 4) if 1 < dx*dx + dy*dy <= 9]
-EXPLORE_TIMER = 12
+EXPLORE_TIMER = 4
 DEMENTIA_RATE = 0.9
 class BotState(Enum):
     GOING_TO_TARGET = 1
@@ -59,14 +59,16 @@ class DeltaTypes(Enum):
 BASE_DIST = 18
 FOUNDARY_THRESHHOLD = 600
 class TargetTypes(Enum):
-    CONNECT_BRIDGE = 0
-    BASE = 1
-    ORE = 2
-    WANDER = 3
-    REPAIR = 4
-    AGG_HARVESTER = 5
-    AGG_DISCONNECTED_CONVEYOR = 6
-    REMOVAL = 7
+    # Lower number = higher priority
+    REMOVAL = 0
+    REPAIR = 1
+    BASE = 2
+    AGG_DISCONNECTED_CONVEYOR = 3
+    AGG_HARVESTER = 4
+    SENTINEL = 5
+    CONNECT_BRIDGE = 6
+    ORE = 7
+    WANDER = 8
 
 TURRET_THREAT_RADIUS = 2
 _SENTINEL = object()

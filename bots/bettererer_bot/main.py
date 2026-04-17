@@ -2,11 +2,9 @@ from cambc import *
 from entity_behaviour.entity_base import *
 from entity_behaviour.core import Core
 from entity_behaviour.bot import Bot
-from entity_behaviour.gatherer_bot import Gatherer
 from entity_behaviour.launcher import Launcher
 from entity_behaviour.blocker_bot import Blocker
 from entity_behaviour.base_builder_bot import BaseBuilder
-from entity_behaviour.repair_bot import Repairer
 from entity_behaviour.aggressor_bot import Aggressor
 from utils.helper_functions import get_entity
 from entity_behaviour.sentinel import Sentinel
@@ -17,6 +15,8 @@ class Player:
         self.entity_script: EBase = None
 
     def run(self, ct: Controller):
+        if ct.get_current_round() >= 2000:
+            return
         if not self.entity_script:
            self.entity_script = self._decide_entity(ct)
 
