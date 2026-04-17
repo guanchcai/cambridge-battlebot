@@ -4,7 +4,7 @@ import random
 from cambc import Controller, EntityType, Position, Environment
 from utils.tile_info import TileData
 from utils.helper_functions import direction_to_delta
-from utils.constants import DeltaTypes, PathfindStatus
+from utils.constants import ORE_SITES, DeltaTypes, PathfindStatus
 from utils.path_queue import PathQueue
 
 class AStarPathfinder:
@@ -32,6 +32,8 @@ class AStarPathfinder:
             return 1
         if tile.destroyable():
             return 5
+        if tile.building_type == EntityType.HARVESTER:
+            return 10000
         if tile.passable(self.ct):
             return 0
         if tile.bot_id == bot_id:
@@ -141,6 +143,8 @@ class AStarPathfinder:
 
             if open_f[0][0] <= open_b[0][0]:
                 f_u, u = heapq.heappop(open_f)
+                if f_u >= 10000 and meet:
+                    continue
                 
                 if abs(f_u - (g_f[u] + self.heuristic(u, index_goal))) > 1e-9:
                     continue
@@ -182,7 +186,7 @@ class AStarPathfinder:
                                 mu = cand
                                 meet = next_index
                 
-                if u != index_start and build_bridge:
+                if (u != index_start or self.ct.get_tile_env(start) not in ORE_SITES) and build_bridge:
                     for v in direction_to_delta(DeltaTypes.BRIDGE):
                         next_index = self.add_to_id(u, v[0], v[1])
                         if next_index is None:
@@ -206,6 +210,8 @@ class AStarPathfinder:
                 
             else:
                 b_u, u = heapq.heappop(open_b)
+                if b_u >= 10000 and meet:
+                    continue
                 
                 if abs(b_u - (g_b[u] + self.heuristic(u, index_start))) > 1e-9:
                     continue

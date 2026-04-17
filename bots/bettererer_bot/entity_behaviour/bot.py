@@ -198,7 +198,7 @@ class Bot(EBase):
                     self.broken_wall = None
         if move_pos == self.position:
             return True
-        if move_pos_data and move_pos_data.destroyable() and self.ct.can_destroy(move_pos):
+        if move_pos_data and (move_pos_data.destroyable() or move_pos_data.building_type == EntityType.FOUNDRY) and self.ct.can_destroy(move_pos):
             self.ct.destroy(move_pos)
             self.broken_wall = move_pos
         if self.ct.can_build_road(move_pos):

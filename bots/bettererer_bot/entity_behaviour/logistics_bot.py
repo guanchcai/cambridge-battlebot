@@ -336,7 +336,7 @@ class LogisticsBot(Bot):
             if not has_adjacent_ally(tile)
         }
         if to_heal:
-            to_check = next(iter(to_heal))
+            to_check = min(to_heal, key=lambda x: self.position.distance_squared(x))
             self.set_target(to_check, 2, BotState.GOING_TO_TARGET, TargetTypes.REPAIR)
             print(f"Nearest unexplored is a damaged building at: {to_check}")
             return to_check
@@ -361,6 +361,8 @@ class LogisticsBot(Bot):
 
         if self.ct.get_global_resources()[0] < self.ct.get_harvester_cost()[0]:
             if self.current_target_type == TargetTypes.ORE:
+                if self.position == self.current_target_position:
+                    return self.current_target_position
                 self.visited_ore_sites.discard(self.current_target_position)
             return False
 

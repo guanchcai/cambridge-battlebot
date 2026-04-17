@@ -130,7 +130,12 @@ class Aggressor(Bot):
 
         if not self.is_valid_target(self.current_target_position):
             print(f"Target is invalid {self.current_target_position}")
-            self.set_wandering()
+            enemy_base_pos = self.get_enemy_base()
+            self.set_target(limit_to_map(
+                Position(enemy_base_pos.x + random.randint(-5, 5),
+                        enemy_base_pos.y + random.randint(-5, 5)),
+                        self.ct
+            ), 16, BotState.WANDERING)
             return
         
         target_data = self.get_from_pos(self.current_target_position)
@@ -199,7 +204,7 @@ class Aggressor(Bot):
             target_tile = tile
             
             conveyor_target = get_conveyor_target(tile, self.ct)
-            target_data = self.get_from_pos(tile)
+            target_data = self.get_from_pos(conveyor_target)
             if conveyor_target and checkable_position(conveyor_target, self.ct):
                 if target_data.building_type in CAN_BUILD_OVER and target_data.environment != Environment.WALL:
                     if target_data.bot_team != self.team or target_data.bot_id == self.id:

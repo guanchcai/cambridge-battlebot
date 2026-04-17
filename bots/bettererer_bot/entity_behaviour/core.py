@@ -4,7 +4,7 @@ import math
 
 class Core(EBase):
     def __init__(self, ct: Controller):
-        self.spawn_queue = [Direction.NORTH, Direction.CENTRE, Direction.WEST]
+        self.spawn_queue = [Direction.NORTH, Direction.CENTRE]
         self.spawned = 0
         self.aggressors_spawned = 0  # Track number of aggressors spawned
         
