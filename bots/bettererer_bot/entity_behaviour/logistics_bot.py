@@ -41,9 +41,6 @@ class LogisticsBot(Bot):
         
         if random.random() > DEMENTIA_RATE and self.target_black_list:
             self.target_black_list.pop()
-        
-        if random.random() > DEMENTIA_RATE and self.targetnt:
-            self.targetnt.pop()
             
         print("Updating map")
         super().update_map()
