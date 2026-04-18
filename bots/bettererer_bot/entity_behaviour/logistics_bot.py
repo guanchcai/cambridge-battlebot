@@ -25,6 +25,8 @@ class LogisticsBot(Bot):
         self.current_target_type = TargetTypes.WANDER
         self.target_black_list = set()
 
+        self.targetnt = set()
+
         self.dont_build = False
 
         self.harvester_pos = None
@@ -41,6 +43,9 @@ class LogisticsBot(Bot):
         
         if random.random() > DEMENTIA_RATE and self.target_black_list:
             self.target_black_list.pop()
+        
+        if random.random()*2 > DEMENTIA_RATE and self.targetnt:
+            self.targetnt.pop()
             
         print("Updating map")
         super().update_map()
@@ -142,7 +147,12 @@ class LogisticsBot(Bot):
             if not nearby_bot and can_guard:
                 if tile_data.environment == Environment.ORE_TITANIUM and can_build_sentinel:
                     self.to_guard.add(next(iter(can_guard)))
-                    
+        
+        # ????
+        if tile_data.bot_id and tile_data.bot_id != self.id and tile_data.bot_team == self.team:
+            for d in ALL_DIRECTIONS:
+                self.targetnt.add(tile.add(d))
+            self.targetnt.add(tile)   
 
         if tile_data and tile_data.building_type in TURRETS:
             self.turrets.add(tile)
@@ -306,7 +316,7 @@ class LogisticsBot(Bot):
             return False
         
         print("Finding nearest unexplored")
-        to_delete = self.absolute_inting_traitors - self.target_black_list # set(filter(lambda p: p not in self.target_black_list, self.absolute_inting_traitors))
+        to_delete = self.absolute_inting_traitors - self.target_black_list - self.targetnt
         if to_delete:
             traitor = next(iter(to_delete))
             self.set_target(traitor, 0, BotState.GOING_TO_TARGET, TargetTypes.REMOVAL)
@@ -314,7 +324,7 @@ class LogisticsBot(Bot):
             return traitor
 
         to_heal = {
-            tile for tile in self.to_repair - self.target_black_list
+            tile for tile in self.to_repair - self.target_black_list - self.targetnt
             if not has_adjacent_ally(tile)
         }
         if to_heal:
@@ -337,7 +347,7 @@ class LogisticsBot(Bot):
         if self.current_target_type == TargetTypes.CONNECT_BRIDGE:
             return True
 
-        unguarded = self.to_guard - self.target_black_list # set(filter(lambda p: p not in self.target_black_list, self.to_guard))
+        unguarded = self.to_guard - self.target_black_list - self.targetnt
         if unguarded and self.ct.get_global_resources()[0] >= self.ct.get_sentinel_cost()[0] and self.ct.get_current_round() >= 50:
             to_check = next(iter(unguarded))
             self.set_target(to_check, 0, BotState.GOING_TO_TARGET, TargetTypes.SENTINEL)
