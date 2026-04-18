@@ -55,13 +55,14 @@ class LogisticsBot(Bot):
     def update_tile(self, tile: Position, tile_data: TileData):
         ### 1. find the target
 
-        if tile_data.environment in ORE_SITES and tile not in self.ore_sites:
+        if tile_data.environment in ORE_SITES:
             if (
                 not self.is_passable(tile) or \
                 (tile_data.own_team and tile_data.building_type in CONVEYORS) or \
                 not any([self.is_passable(tile.add(d)) for d in CARDINAL_DIRECTIONS])
             ) and tile_data.bot_id != self.id:
                 self.visited_ore_sites.add(tile)
+
                 
         if tile_data.environment == Environment.ORE_TITANIUM:
             self.ore_sites.add(tile)
@@ -108,6 +109,8 @@ class LogisticsBot(Bot):
                     continue
                 check_info = self.get_from_pos(check_pos)
                 if not check_info:
+                    has_conveyor = True
+                    nearby_bot = True
                     continue
                 if check_info and check_info.building_type in TURRETS and not check_info.own_team:
                     self.absolute_inting_traitors.add(tile)
@@ -330,9 +333,12 @@ class LogisticsBot(Bot):
             self.set_target(to_check, 0, BotState.GOING_TO_TARGET, TargetTypes.CONNECT_BRIDGE)
             print(f"Nearest unexplored is an unconnected conveyor at: {to_check}")
             return to_check
+        
+        if self.current_target_type == TargetTypes.CONNECT_BRIDGE:
+            return True
 
         unguarded = self.to_guard - self.target_black_list # set(filter(lambda p: p not in self.target_black_list, self.to_guard))
-        if unguarded and self.ct.get_global_resources()[0] >= self.ct.get_sentinel_cost()[0]:
+        if unguarded and self.ct.get_global_resources()[0] >= self.ct.get_sentinel_cost()[0] and self.ct.get_current_round() >= 50:
             to_check = next(iter(unguarded))
             self.set_target(to_check, 0, BotState.GOING_TO_TARGET, TargetTypes.SENTINEL)
             print(f"Nearest unexplored is a unprotected area at: {to_check}")
@@ -538,6 +544,10 @@ class LogisticsBot(Bot):
                 elif any([turret.distance_squared(tile) < SENTINEL_RANGE / 2 for turret in self.turrets]):
                     self.to_guard.discard(tile)
                     return False
+            case TargetTypes.WANDER:
+                target_data = self.get_from_pos(self.current_target_position)
+                if target_data and not (target_data.own_team and target_data.building_type in CONVEYORS):
+                    self.visiting_queue.discard(self.current_target_position)
         return True
 
             

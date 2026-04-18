@@ -188,13 +188,18 @@ class Bot(EBase):
 
     def build_road(self, move_pos: Position, next_pos: Position):
         move_pos_data = self.get_from_pos(move_pos)
-        self.broken_wall_data = self.get_from_pos(self.broken_wall) if self.broken_wall else None
+        if self.broken_wall and checkable_position(self.broken_wall, self.ct):
+            broken_wall_id = self.ct.get_tile_building_id(self.broken_wall)
+            broken_wall_entity = self.ct.get_entity_type(broken_wall_id) if broken_wall_id else None
 
-        if self.broken_wall_data and (self.broken_wall_data.is_team_road() or self.broken_wall_data.building_type in IGNORED_BUILDINGS):
-            if self.ct.can_destroy(self.broken_wall):
-                self.ct.destroy(self.broken_wall)
-                if self.ct.can_build_barrier(self.broken_wall):
-                    self.ct.build_barrier(self.broken_wall)
+            if broken_wall_id and broken_wall_entity in CAN_BUILD_OVER:
+                broken_wall_team = self.ct.get_team(broken_wall_id)
+                if self.ct.can_destroy(self.broken_wall):
+                    self.ct.destroy(self.broken_wall)
+                    if self.ct.can_build_barrier(self.broken_wall):
+                        self.ct.build_barrier(self.broken_wall)
+                        self.broken_wall = None
+                elif broken_wall_team != self.team:
                     self.broken_wall = None
         if move_pos == self.position:
             return True
