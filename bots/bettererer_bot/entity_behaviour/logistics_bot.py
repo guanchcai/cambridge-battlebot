@@ -492,9 +492,12 @@ class LogisticsBot(Bot):
         if not potential_harvester_pos or not checkable_position(potential_harvester_pos, self.ct) or potential_harvester_pos in self.dont_harvest:
             return
         tile_data = self.get_from_pos(potential_harvester_pos)
+
+        building_id = self.ct.get_tile_building_id(potential_harvester_pos)
         
-        etype = get_entity(potential_harvester_pos, self.ct)
-        if tile_data and tile_data.environment in ORE_SITES and (etype in IGNORED_BUILDINGS or etype == EntityType.ROAD) and potential_harvester_pos in self.visited_ore_sites:
+        etype = self.ct.get_entity_type(building_id) if building_id else None
+
+        if tile_data and tile_data.environment in ORE_SITES and (etype in IGNORED_BUILDINGS or (etype == EntityType.ROAD and self.ct.get_team(building_id) == self.team)) and potential_harvester_pos in self.visited_ore_sites:
             print("Reached here")
             print(self.ct.can_build_harvester(potential_harvester_pos))
             print(potential_harvester_pos)

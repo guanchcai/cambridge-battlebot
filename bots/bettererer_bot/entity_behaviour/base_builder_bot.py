@@ -109,7 +109,7 @@ class BaseBuilder(Bot):
             print(f"Trying to build {to_build} at {self.current_target_position}")
             g_resource = self.ct.get_global_resources()[0]
             can_build = g_resource >= entity_cost and self.ct.get_action_cooldown() == 0
-            if can_build and self.ct.can_destroy(self.current_target_position) and get_entity(self.current_target_position, self.ct) != to_build:
+            if can_build and self.ct.can_destroy(self.current_target_position) and get_entity(self.current_target_position, self.ct) != to_build and tile_data.destroyable():
                 self.ct.destroy(self.current_target_position)
             
             if self.ct.can_build(to_build, self.current_target_position):
