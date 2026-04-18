@@ -31,6 +31,9 @@ class AStarPathfinder:
         if tile is None:
             return 1
         if tile.destroyable():
+            if bridge_allowed:
+                # We are bridging back, so it is safe to ignore all walls
+                return 0
             return 5
         if tile.building_type == EntityType.HARVESTER:
             return 10000

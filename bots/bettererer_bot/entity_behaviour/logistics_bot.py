@@ -87,8 +87,9 @@ class LogisticsBot(Bot):
                     target_info = self.get_from_pos(conveyor_target)
                     if (
                         (target_info and target_info.building_type in TURRETS and not target_info.own_team) or
-                        (target_info and target_info.building_type in CONVEYORS and get_conveyor_target(tile, self.ct) == tile) or
-                        (target_info and target_info.environment == Environment.WALL)
+                        (target_info and target_info.building_type in CONVEYORS and get_conveyor_target(conveyor_target, self.ct) == tile) or
+                        (target_info and target_info.environment == Environment.WALL) or 
+                        (conveyor_target in self.target_black_list)
                     ):
                         self.absolute_inting_traitors.add(tile)
         
@@ -154,29 +155,7 @@ class LogisticsBot(Bot):
             self.current_state == BotState.GOING_TO_TARGET and
             self.current_target_position == tile and tile_data.bot_id != self.id
         ):
-            match self.current_target_type:
-                case TargetTypes.ORE:
-                    if (
-                        not self.is_passable(tile) or \
-                        (tile_data.own_team and tile_data.building_type in CONVEYORS) or \
-                        not any([self.is_passable(tile.add(d)) for d in CARDINAL_DIRECTIONS])
-                    ):
-                        print("Ore target not actually reachable")
-                        self.visited_ore_sites.add(tile)
-                case TargetTypes.CONNECT_BRIDGE:
-                    if (not self.is_passable(tile)):
-                        print("Bridge target not actually reachable")
-                case TargetTypes.REPAIR:
-                    damaged = tile_data and tile_data.building_id and self.ct.get_hp(tile_data.building_id) < self.ct.get_max_hp(tile_data.building_id)
-                    if not damaged:
-                        print("Repair target not actually damaged")
-                        self.to_repair.discard(tile)
-                case TargetTypes.SENTINEL:
-                    guard_data = self.get_from_pos(self.current_target_position)
-                    if guard_data is None or not (guard_data.building_type in IGNORED_BUILDINGS or guard_data.building_type == EntityType.ROAD or guard_data.destroyable()) or (guard_data.bot_id and guard_data.bot_id != self.id):
-                        self.to_guard.discard(tile)
-                    elif any([turret.distance_squared(tile) < SENTINEL_RANGE / 2 for turret in self.turrets]):
-                        self.to_guard.discard(tile)
+            self.is_valid_target()
 
     def move_to_pos(self):
         super().move_to_pos()
@@ -274,7 +253,7 @@ class LogisticsBot(Bot):
                         not adjacent_data.bot_id
                     ):
                         print(f"Building barrier at {adjacent_pos}")
-                        if self.ct.can_destroy(adjacent_pos):
+                        if self.ct.can_destroy(adjacent_pos) and get_entity(adjacent_pos, self.ct) == EntityType.ROAD:
                             self.ct.destroy(adjacent_pos)
                         if self.ct.can_build_barrier(adjacent_pos):
                             self.ct.build_barrier(adjacent_pos)
@@ -359,7 +338,7 @@ class LogisticsBot(Bot):
             print(f"Nearest unexplored is a unprotected area at: {to_check}")
             return to_check
 
-        if self.ct.get_global_resources()[0] < self.ct.get_harvester_cost()[0]:
+        if self.ct.get_global_resources()[0] < self.ct.get_harvester_cost()[0] and (self.current_target_type == TargetTypes.WANDER or self.current_target_type == TargetTypes.ORE):
             if self.current_target_type == TargetTypes.ORE:
                 if self.position == self.current_target_position:
                     return self.current_target_position
@@ -391,7 +370,7 @@ class LogisticsBot(Bot):
             print(f"Nearest unexplored ore is at: {to_visit}")
             return to_visit
         
-        return None
+        return self.current_target_position if self.current_state == BotState.GOING_TO_TARGET and self.is_valid_target() else None
     
     def set_wandering(self):
         def visit_conveyors():
@@ -513,7 +492,7 @@ class LogisticsBot(Bot):
             print("Reached here")
             print(self.ct.can_build_harvester(potential_harvester_pos))
             print(potential_harvester_pos)
-            if self.ct.can_destroy(potential_harvester_pos) and get_entity(potential_harvester_pos, self.ct) in CAN_BUILD_OVER:
+            if self.ct.can_destroy(potential_harvester_pos) and get_entity(potential_harvester_pos, self.ct) == EntityType.ROAD:
                 self.ct.destroy(potential_harvester_pos)
             if self.ct.can_build_harvester(potential_harvester_pos):
                 self.ct.build_harvester(potential_harvester_pos)
@@ -526,6 +505,41 @@ class LogisticsBot(Bot):
         self.set_target(self.base_position, 16, BotState.WANDERING)
         self.visited_ore_sites.discard(self.current_target_position)
         return super().handle_thrown()
+    
+    def is_valid_target(self):
+        tile = self.current_target_position
+        tile_data = self.get_from_pos(tile)
+        if tile in self.target_black_list:
+            return False
+        match self.current_target_type:
+            case TargetTypes.ORE:
+                if (
+                    not self.is_passable(tile) or \
+                    (tile_data.own_team and tile_data.building_type in CONVEYORS) or \
+                    not any([self.is_passable(tile.add(d)) for d in CARDINAL_DIRECTIONS])
+                ):
+                    print("Ore target not actually reachable")
+                    self.visited_ore_sites.add(tile)
+                    return False
+            case TargetTypes.CONNECT_BRIDGE:
+                if (not self.is_passable(tile)):
+                    return False
+            case TargetTypes.REPAIR:
+                damaged = tile_data and tile_data.building_id and self.ct.get_hp(tile_data.building_id) < self.ct.get_max_hp(tile_data.building_id)
+                if not damaged:
+                    print("Repair target not actually damaged")
+                    self.to_repair.discard(tile)
+                    return False
+            case TargetTypes.SENTINEL:
+                guard_data = self.get_from_pos(self.current_target_position)
+                if guard_data is None or not (guard_data.building_type in IGNORED_BUILDINGS or guard_data.building_type == EntityType.ROAD or guard_data.destroyable()) or (guard_data.bot_id and guard_data.bot_id != self.id):
+                    self.to_guard.discard(tile)
+                    return False
+                elif any([turret.distance_squared(tile) < SENTINEL_RANGE / 2 for turret in self.turrets]):
+                    self.to_guard.discard(tile)
+                    return False
+        return True
+
             
 """
 ##############*****=====---:::::...                                                                .-+######################################
