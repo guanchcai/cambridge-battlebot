@@ -517,6 +517,8 @@ class LogisticsBot(Bot):
         tile_data = self.get_from_pos(tile)
         if tile in self.target_black_list:
             return False
+        if not checkable_position(tile, self.ct):
+            return True
         match self.current_target_type:
             case TargetTypes.ORE:
                 if (
@@ -525,7 +527,7 @@ class LogisticsBot(Bot):
                     not any([self.is_passable(tile.add(d)) for d in CARDINAL_DIRECTIONS])
                 ):
                     print("Ore target not actually reachable")
-                    self.visited_ore_sites.add(tile)
+                    self.dont_harvest.add(tile)
                     return False
             case TargetTypes.CONNECT_BRIDGE:
                 if (not self.is_passable(tile)):

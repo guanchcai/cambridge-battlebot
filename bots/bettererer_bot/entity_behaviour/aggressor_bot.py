@@ -362,14 +362,10 @@ class Aggressor(Bot):
                 if not checkable_position(check_pos, self.ct):
                     continue
                 
-                end = self.get_ends(check_pos)
+                end = get_conveyor_target(check_pos, self.ct)
                 if not end:
                     continue
-                for ending_info in end:
-                    if ending_info is None:
-                        continue
-                    if ending_info[1] != pos:
-                        continue
+                if end == pos:
                     return True
         return False
     
