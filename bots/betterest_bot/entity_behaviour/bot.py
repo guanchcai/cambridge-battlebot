@@ -1,4 +1,5 @@
 from collections import deque
+import time
 
 from entity_behaviour.entity_base import EBase
 from cambc import Controller, Position, Environment, EntityType
@@ -14,6 +15,7 @@ from itertools import product
 class Bot(EBase):
     def __init__(self, ct: Controller):
         super().__init__(ct)
+        
         self.base_position = ct.get_position(ct.get_tile_building_id(self.original_position))
         self.internal_map: list[TileData | None] = [None] * (self.map_width * self.map_height)
 
@@ -38,12 +40,20 @@ class Bot(EBase):
         self.unexplored = set()
         self.buckets = {}
         self.bucket_size = 16
-        self.broken_wall = None
+        self.broken_wall = set()
 
         # Pathfinder variables
         self.pathfind_status = PathfindStatus.SUCCESS
 
         self.position = ct.get_position()
+        
+        cx = self.map_width // 2
+        cy = self.map_height // 2
+        dx = self.base_position.x - cx
+        dy = self.base_position.y - cy
+        length = max(1, (dx*dx + dy*dy) ** 0.5)
+        self.spawn_bias_dx = dx / length
+        self.spawn_bias_dy = dy / length
 
         for x in range(self.map_width):
             for y in range(self.map_height):
@@ -194,28 +204,28 @@ class Bot(EBase):
     def build_road(self, move_pos: Position, next_pos: Position):
         move_pos_data = self.get_from_pos(move_pos)
 
-        if self.broken_wall and checkable_position(self.broken_wall, self.ct):
-            broken_wall_data = self.get_from_pos(self.broken_wall)
+        if self.previous_position in self.broken_wall and checkable_position(self.previous_position, self.ct):
+            broken_wall_data = self.get_from_pos(self.previous_position)
 
             if broken_wall_data and broken_wall_data.building_type in CAN_BUILD_OVER:
-                if self.ct.can_destroy(self.broken_wall):
-                    self.ct.destroy(self.broken_wall)
-                    if self.ct.can_build_barrier(self.broken_wall):
-                        self.ct.build_barrier(self.broken_wall)
-                        self.broken_wall = None
+                if self.ct.can_destroy(self.previous_position):
+                    self.ct.destroy(self.previous_position)
+                    if self.ct.can_build_barrier(self.previous_position):
+                        self.ct.build_barrier(self.previous_position)
+                        self.broken_wall.discard(self.broken_wall)
                 elif not broken_wall_data.own_team:
-                    self.broken_wall = None
+                    self.broken_wall.discard(self.broken_wall)
 
         if move_pos == self.position:
             return True
         
         if move_pos_data and (move_pos_data.destroyable() or move_pos_data.building_type == EntityType.HARVESTER) and self.ct.can_destroy(move_pos):
             self.ct.destroy(move_pos)
-            self.broken_wall = move_pos
+            self.broken_wall.add(move_pos)
 
         if self.ct.can_build_road(move_pos):
             self.ct.build_road(move_pos)
-            if self.position == self.broken_wall:
+            if self.position in self.broken_wall:
                 return False
         
         return True
@@ -247,20 +257,17 @@ class Bot(EBase):
     
     def reached_target(self):
         self.set_wandering()
-    
+
     def get_current_ring(self) -> int:
-        """Returns the furthest ring index that still has unexplored buckets."""
         if not self.buckets:
             return 0
         
-        # Group buckets by their ring (distance from base bucket)
         base_bx = self.base_position.x // self.bucket_size
         base_by = self.base_position.y // self.bucket_size
 
-        # Find the smallest ring that still has buckets
         min_ring = math.inf
         for b in self.buckets.keys():
-            ring = max(abs(b[0] - base_bx), abs(b[1] - base_by))  # Chebyshev distance
+            ring = max(abs(b[0] - base_bx), abs(b[1] - base_by))
             if ring < min_ring:
                 min_ring = ring
         
@@ -273,32 +280,35 @@ class Bot(EBase):
         base_bx = self.base_position.x // self.bucket_size
         base_by = self.base_position.y // self.bucket_size
 
-        current_ring = self.get_current_ring()
-
-        # Group remaining buckets by ring
-        ring_buckets = {}
-        for b in self.buckets.keys():
-            ring = max(abs(b[0] - base_bx), abs(b[1] - base_by))
-            if ring not in ring_buckets:
-                ring_buckets[ring] = []
-            ring_buckets[ring].append(b)
-
-        # Pick the innermost ring that still has buckets
-        # If current ring is fully explored, move to next
-        target_ring = min(ring_buckets.keys())
-
-        # Within the target ring, pick the bucket closest to self
+        # Score each bucket:
+        # - Strongly prefer low ring (close to base)
+        # - Within same ring, prefer buckets in the spawn-bias direction
+        # - Slightly prefer buckets closer to current position (tiebreak)
         def bucket_score(b):
+            ring = max(abs(b[0] - base_bx), abs(b[1] - base_by))
+            
+            # Direction from base bucket to candidate bucket
+            dx = b[0] - base_bx
+            dy = b[1] - base_by
+            length = max(1, (dx*dx + dy*dy) ** 0.5)
+            dx /= length
+            dy /= length
+            
+            # Dot product with spawn bias — higher = more aligned with our side
+            # Negate so lower score = better (min-heap style)
+            bias_alignment = -(dx * self.spawn_bias_dx + dy * self.spawn_bias_dy)
+            
+            # Distance from current position (tiebreak, normalized)
             center = Position(
                 b[0] * self.bucket_size + self.bucket_size // 2,
                 b[1] * self.bucket_size + self.bucket_size // 2
             )
-            return self.position.distance_squared(center)
+            dist_from_self = self.position.distance_squared(center) / 10000.0
 
-        best_bucket = min(
-            ring_buckets[target_ring],
-            key=lambda b: (bucket_score(b), random.random())
-        )
+            # Ring is the dominant factor; bias is secondary; distance is tiebreak
+            return (ring, bias_alignment, dist_from_self)
+
+        best_bucket = min(self.buckets.keys(), key=bucket_score)
 
         return min_with_random_tiebreak(
             self.buckets[best_bucket],

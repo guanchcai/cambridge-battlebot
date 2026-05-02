@@ -1,4 +1,6 @@
-from cambc import Controller, Environment, Position, EntityType
+from collections import deque
+
+from cambc import Controller, Environment, Position, EntityType, ResourceType
 from utils.tile_info import TileData
 from entity_behaviour.bot import Bot
 from utils.constants import CONVEYORS, BotState, DeltaTypes
@@ -18,16 +20,21 @@ class LogisticsBot(Bot):
         self.absolute_inting_traitors = set()
         self.dont_harvest = set()
         self.to_guard = set()
+        self.enemy_intruder = set()
+
+        self.previous_targets = deque(maxlen=7)
+        self.previous_targets.append(None)
 
         self.visiting_queue = set()
         self.visited = set()
 
         self.current_target_type = TargetTypes.WANDER
+        self.unreachable_targets = set()
         self.target_black_list = set()
+        self.target_args = []
 
         self.dont_build = None
 
-        self.harvester_pos = None
         self.turrets = set()
 
         super().__init__(ct)
@@ -36,20 +43,19 @@ class LogisticsBot(Bot):
         self.pending_checks.clear()
         self.checked.clear()
         self.absolute_inting_traitors.clear()
-        self.to_repair.clear()
         self.to_guard.clear()
+        self.target_black_list.clear()
+        self.enemy_intruder.clear()
         
-        if random.random() > DEMENTIA_RATE and self.target_black_list:
-            self.target_black_list.pop()
-            
+        if random.random() > DEMENTIA_RATE and self.unreachable_targets:
+            self.unreachable_targets.pop()
+        
         print("Updating map")
         super().update_map()
         print("Updated map")
-        
-        # Best solution I can come up with is to run a target tick every game tick
-        if not self.build_harvester():
-            # I hate isolating this check but it must cover all edge cases
-            self.update_targets()
+        print(f"Previous targets: {self.previous_targets}")
+        self.target_black_list = self.unreachable_targets.union(filter(lambda x: self.previous_targets.count(x) >= 4, self.previous_targets))
+        self.update_targets()
 
     def update_tile(self, tile: Position, tile_data: TileData):
         ### 1. find the target                
@@ -59,31 +65,38 @@ class LogisticsBot(Bot):
         elif tile_data.environment == Environment.ORE_AXIONITE:
             self.axionite_ore_sites.add(tile)
 
-        if tile_data.building_type in CONVEYORS and tile_data.own_team:
+        if tile_data.own_team and not tile_data.is_team_road():            
             damaged = self.ct.get_hp(tile_data.building_id) < self.ct.get_max_hp(tile_data.building_id)
+            if damaged:
+                self.to_repair.add(tile)
+
+        if tile_data.building_type in CONVEYORS and tile_data.own_team:
 
             self.visiting_queue.add(tile)
 
             if tile.distance_squared(self.position) <= 4:
                 self.visited.add(tile)
-
-            if damaged:
-                self.to_repair.add(tile)
                 
             conveyor_target = get_conveyor_target(tile, self.ct)
             if conveyor_target and checkable_position(conveyor_target, self.ct):
-                self.pending_checks.add(conveyor_target)
+                if tile_data.bot_id == self.id or tile_data.bot_id is None:
+                    self.pending_checks.add((conveyor_target, tile))
                 target_info = self.get_from_pos(conveyor_target)
                 if target_info and (
                     (target_info.building_type not in INVALID_CONTAINERS and not target_info.own_team) or
                     (target_info.building_type in CONVEYORS and not target_info.own_team) or
                     (target_info.environment == Environment.WALL) or 
                     (conveyor_target in self.target_black_list)
+                    # (target_info.bot_id and not target_info.bot_team and target_info.building_type in INVALID_CONTAINERS)
                 ):
                     self.absolute_inting_traitors.add(tile)
+                if target_info and (
+                    (target_info.bot_id and not target_info.bot_team and target_info.building_type in INVALID_CONTAINERS)
+                ):
+                    self.enemy_intruder.add(conveyor_target)
         
         if tile_data and tile_data.building_type == EntityType.HARVESTER and tile_data.own_team:
-            can_build_turrets = not self.turrets or all([turret.distance_squared(tile) >= 2 for turret in self.turrets])
+            can_build_turrets = not self.turrets or sum(turret.distance_squared(tile) <= 1 for turret in self.turrets) < 2
 
             can_guard = set()
             has_conveyor = False
@@ -93,22 +106,29 @@ class LogisticsBot(Bot):
                 check_pos = tile.add(d)
                 if not checkable_position(check_pos, self.ct):
                     print(f"Can't check {check_pos}")
+                    if is_in_bound(check_pos, self.ct):
+                        has_conveyor = True
                     continue
                 
                 check_id = self.ct.get_tile_building_id(check_pos)
                 check_building = self.ct.get_entity_type(check_id) if check_id else None
                 check_team = self.ct.get_team(check_id) if check_id else None
+                check_environment = self.ct.get_tile_env(check_pos)
+                check_bot = self.ct.get_tile_builder_bot_id(check_pos)
 
-                if check_building in TURRETS and check_team != self.team:
-                    self.absolute_inting_traitors.add(tile)
+                # if check_building in TURRETS and check_team != self.team:
+                #     self.absolute_inting_traitors.add(tile)
                 
-                # if (check_building in CAN_BUILD_OVER or (check_team == self.team and check_building == EntityType.BARRIER)) and \
-                #     check_info.environment != Environment.WALL:
-                #     if check_info.bot_id is None or check_info.bot_id == self.id:
-                #         can_guard.add(check_pos)
-                #     potential_conveyor_pos.add(check_pos)
+                if (check_building in CAN_BUILD_OVER or (check_team == self.team and check_building == EntityType.BARRIER)) and \
+                    check_environment != Environment.WALL:
+                    if check_bot is None or check_bot == self.id:
+                        can_guard.add(check_pos)
+                    potential_conveyor_pos.add((check_pos, tile))
                 
-                if check_info and check_info.building_type in CONVEYORS:
+                if check_bot and self.ct.get_team(check_bot) != self.team:
+                    self.enemy_intruder.add(check_pos)
+
+                if check_building in CONVEYORS:
                     has_conveyor = True
             
             for d in DIRECTIONS:
@@ -119,20 +139,24 @@ class LogisticsBot(Bot):
                 check_info = self.get_from_pos(check_pos)
                 if not check_info:
                     continue
-                if check_info and check_info.bot_id and check_info.bot_id != self.id and check_info.bot_team == self.team:
+                if check_info and check_info.bot_id and check_info.bot_id != self.id and check_info.bot_team:
                     nearby_bot = True
             
             if not has_conveyor:
                 self.pending_checks = self.pending_checks.union(potential_conveyor_pos)
             
             print(f"Positions to guard: {can_guard}")
+            print(f"Nearby: {nearby_bot} and {can_guard} and {can_build_turrets}")
             if not nearby_bot and can_guard:
                 if tile_data.environment == Environment.ORE_TITANIUM and can_build_turrets:
-                    self.to_guard.add(next(iter(can_guard)))
-                    
+                    self.to_guard.update(can_guard)
+            
+            self.visited_ore_sites.add(tile)
 
-        if tile_data and tile_data.building_type in TURRETS:
+        if tile_data and tile_data.own_team and tile_data.building_type in TURRETS:
             self.turrets.add(tile)
+        elif tile in self.turrets:
+            self.turrets.discard(tile)
 
         ### 2. is it valid or nah
         if tile in self.visiting_queue and tile_data.building_type not in CONVEYORS:
@@ -154,8 +178,9 @@ class LogisticsBot(Bot):
         super().move_to_pos()
         if self.ct.get_position().distance_squared(self.current_target_position) <= 2 and \
             (
-                self.current_target_type == TargetTypes.REMOVAL or \
-                self.current_target_type == TargetTypes.SENTINEL
+                # self.current_target_type == TargetTypes.REMOVAL or \
+                self.current_target_type == TargetTypes.SENTINEL or \
+                self.current_target_type in BUILDING_CONVEYORS
             ):
             self.reached_target()
 
@@ -172,7 +197,7 @@ class LogisticsBot(Bot):
             print("Not updated yet!")
             return super().build_road(move_pos, next_pos)
         
-        if self.current_state == BotState.WANDERING or self.current_target_type != TargetTypes.BASE:
+        if self.current_state == BotState.WANDERING or self.current_target_type not in BUILDING_CONVEYORS:
             print("Just building road normally")
             print(f"Current state is: {self.current_state}, and target type is: {self.current_target_type}")
             return super().build_road(move_pos, next_pos)
@@ -199,11 +224,11 @@ class LogisticsBot(Bot):
     
     def unreachable_path(self):
         if self.current_state == BotState.GOING_TO_TARGET:
-            self.target_black_list.add(self.current_target_position)
+            self.unreachable_targets.add(self.current_target_position)
         return super().unreachable_path()
     
     def run_flood_fill(self):
-        if self.current_target_type == TargetTypes.BASE:
+        if self.current_target_type in BUILDING_CONVEYORS:
             self.pathfind_status, self.distance_map = self.path_finder.run(
                 self.position,
                 self.current_target_position,
@@ -222,8 +247,12 @@ class LogisticsBot(Bot):
     
     def reached_target(self):
         print(f"Reached target timer {self.ct.get_cpu_time_elapsed()}, current target type {self.current_target_type}")
-        if self.current_state == BotState.WANDERING or self.current_target_type == TargetTypes.BASE:
+        if self.current_state == BotState.WANDERING or self.current_target_type in BUILDING_CONVEYORS:
             return super().reached_target()
+        
+        if not self.is_valid_target():
+            self.set_target(self.base_position, 16, BotState.WANDERING)
+            return
         self.position = self.ct.get_position()
         
         target_data = self.get_from_pos(self.current_target_position)
@@ -235,6 +264,8 @@ class LogisticsBot(Bot):
 
         match self.current_target_type:
             case TargetTypes.ORE:
+                if self.position != self.current_target_position:
+                    return
                 for d in CARDINAL_DIRECTIONS:
                     adjacent_pos = self.position.add(d)
                     if not checkable_position(adjacent_pos, self.ct):
@@ -256,22 +287,42 @@ class LogisticsBot(Bot):
                 can_build = self.ct.get_global_resources()[0] >= self.ct.get_harvester_cost()[0]
                 if can_build:
                     self.visited_ore_sites.add(self.current_target_position)
-                    self.dont_build = self.current_target_position
-                    self.set_target(self.base_position, BASE_DIST, BotState.GOING_TO_TARGET, TargetTypes.BASE)
+                    print(f"Added ore site {self.current_target_position} to visited")
+                    self.dont_build = self.current_target_position # Worry about it later
+                    if target_data.environment == Environment.ORE_AXIONITE:
+                        self.set_target(self.base_position, BASE_DIST, BotState.GOING_TO_TARGET, TargetTypes.CARRYING_AXIOMNITE, ResourceType.RAW_AXIONITE)
+                    else:
+                        self.set_target(self.base_position, BASE_DIST, BotState.GOING_TO_TARGET, TargetTypes.BASE, ResourceType.TITANIUM)
             case TargetTypes.CONNECT_BRIDGE:
-                self.set_target(self.base_position, BASE_DIST, BotState.GOING_TO_TARGET, TargetTypes.BASE)
-            case TargetTypes.REPAIR:
-                pass
-            case TargetTypes.REMOVAL:
-                if self.ct.can_destroy(self.current_target_position):
-                    self.ct.destroy(self.current_target_position)
-                    if target_data.building_type == EntityType.HARVESTER and self.ct.can_build_barrier(self.current_target_position):
-                        self.ct.build_barrier(self.current_target_position)
-                if not target_data.building_id or not (target_data.own_team and (target_data.building_type in CONVEYORS or target_data.building_type == EntityType.HARVESTER)):
-                    # Already removed
+                from_conveyor = self.target_args[0]
+                print(f"Disconnected conveyor: {from_conveyor}")
+                from_conveyor_data = self.get_from_pos(from_conveyor)
+                if not from_conveyor_data.own_team or from_conveyor_data.building_type not in CONVEYORS:
+                    if from_conveyor_data.building_type == EntityType.HARVESTER:
+                        if from_conveyor_data.environment == Environment.ORE_AXIONITE:
+                            self.set_target(self.base_position, BASE_DIST, BotState.GOING_TO_TARGET, TargetTypes.CARRYING_AXIOMNITE)
+                        else:
+                            self.set_target(self.base_position, BASE_DIST, BotState.GOING_TO_TARGET, TargetTypes.BASE)
+
                     return
+                
+                resource = self.ct.get_stored_resource(from_conveyor_data.building_id)
+                if resource == ResourceType.RAW_AXIONITE:
+                    self.set_target(self.base_position, BASE_DIST, BotState.GOING_TO_TARGET, TargetTypes.CARRYING_AXIOMNITE)
+                else:
+                    self.set_target(self.base_position, BASE_DIST, BotState.GOING_TO_TARGET, TargetTypes.BASE)
+            case TargetTypes.REPAIR:
+                if not self.is_valid_target():
+                    self.to_repair.discard(self.current_target_position)
+                    self.set_target(self.base_position, 16, BotState.WANDERING)
+
+            case TargetTypes.REMOVAL:
+                if self.ct.can_destroy(self.current_target_position) and target_data.building_type == self.target_args[0]:
+                    self.ct.destroy(self.current_target_position)
+                if self.ct.can_build_road(self.current_target_position):
+                    self.ct.build_road(self.current_target_position)
             case TargetTypes.SENTINEL:
-                can_build = self.ct.get_global_resources()[0] >= self.ct.get_sentinel_cost()[0] and self.ct.get_action_cooldown() == 0
+                can_build = self.ct.get_global_resources()[0] >= self.ct.get_gunner_cost()[0] and self.ct.get_action_cooldown() == 0
             
                 if can_build and (target_data.building_type == None or target_data.is_team_road() or target_data.destroyable()):
                     if self.position == self.current_target_position:
@@ -281,17 +332,32 @@ class LogisticsBot(Bot):
                         self.ct.destroy(self.current_target_position)
                     facing = random.choice(list(DIAGONAL_DIRECTIONS))
                     
-                    for d in DIAGONAL_DIRECTIONS:
+                    print(f"Can build sent: {self.ct.can_build_gunner(self.current_target_position, facing)}")
+                    if not self.ct.can_build_gunner(self.current_target_position, facing):
+                        print(f"Reason: {get_entity(self.current_target_position, self.ct)}")
+                    if self.ct.can_build_gunner(self.current_target_position, facing):
+                        self.ct.build_gunner(self.current_target_position, facing)
+            case TargetTypes.INTRUDER:
+                if self.ct.can_fire(self.position) and not self.get_from_pos(self.position).own_team:
+                    self.ct.fire(self.position)
+                if self.ct.get_action_cooldown() == 0 and self.ct.get_global_resources() >= self.ct.get_launcher_cost():
+                    for d in DIRECTIONS:
                         check_pos = self.current_target_position.add(d)
                         if not checkable_position(check_pos, self.ct):
                             continue
-                        if get_entity(check_pos, self.ct) in CONVEYORS:
-                            facing = d
+                        if check_pos.distance_squared(self.position) > 2:
+                            continue
+                        check_info = self.get_from_pos(check_pos)
+                        if self.ct.can_destroy(check_pos) and check_info.building_type in CAN_BUILD_OVER:
+                            self.ct.destroy(check_pos)
+                            if check_pos == self.position:
+                                self.move_to_adjacent()
+                        if self.ct.can_build_launcher(check_pos):
+                            self.ct.build_launcher(check_pos)
+                            
+                            self.set_target(self.base_position, 16, BotState.WANDERING)
                             break
-                    print(f"Can build sent: {self.ct.can_build_sentinel(self.current_target_position, facing)}")
-                    if self.ct.can_build_sentinel(self.current_target_position, facing):
-                        self.ct.build_sentinel(self.current_target_position, facing)
-                
+
     def nearest_unexplored(self):
         def has_adjacent_ally(tile):
             for d in DIRECTIONS:
@@ -299,7 +365,16 @@ class LogisticsBot(Bot):
                 if not checkable_position(check_pos, self.ct):
                     continue
                 t_d = self.get_from_pos(check_pos)
-                if t_d and t_d.bot_team == self.team and t_d.bot_id != self.id:
+                if t_d and t_d.is_team_bot(self.id):
+                    return True
+            return False
+        def has_adjacent_launcher(tile):
+            for d in DIRECTIONS:
+                check_pos = tile.add(d)
+                if not checkable_position(check_pos, self.ct):
+                    continue
+                t_d = self.get_from_pos(check_pos)
+                if t_d and t_d.own_team and t_d.building_type == EntityType.LAUNCHER:
                     return True
             return False
         
@@ -307,7 +382,7 @@ class LogisticsBot(Bot):
         to_delete = self.absolute_inting_traitors - self.target_black_list # set(filter(lambda p: p not in self.target_black_list, self.absolute_inting_traitors))
         if to_delete:
             traitor = next(iter(to_delete))
-            self.set_target(traitor, 0, BotState.GOING_TO_TARGET, TargetTypes.REMOVAL)
+            self.set_target(traitor, 0, BotState.GOING_TO_TARGET, TargetTypes.REMOVAL, self.ct.get_entity_type(self.ct.get_tile_building_id(traitor)))
             print(f"Nearest unexplored is a traitor at: {traitor}")
             return traitor
 
@@ -315,28 +390,39 @@ class LogisticsBot(Bot):
             tile for tile in self.to_repair - self.target_black_list
             if not has_adjacent_ally(tile)
         }
+        print(f"Damaged tiles: {self.to_repair}")
         if to_heal:
             to_check = min(to_heal, key=lambda x: self.position.distance_squared(x))
             self.set_target(to_check, 2, BotState.GOING_TO_TARGET, TargetTypes.REPAIR)
             print(f"Nearest unexplored is a damaged building at: {to_check}")
             return to_check
         
-        if self.current_target_type == TargetTypes.BASE:
+        to_deport = {
+            tile for tile in self.enemy_intruder - self.target_black_list
+            if not has_adjacent_launcher(tile) and not has_adjacent_ally(tile)
+        }
+        if to_deport:
+            le_mexican = min(to_deport, key=lambda x: self.position.distance_squared(x))
+            self.set_target(le_mexican, 2, BotState.GOING_TO_TARGET, TargetTypes.INTRUDER)
+            print(f"Nearest unexplored is a intruder to be taken care of at: {le_mexican}")
+            return le_mexican
+
+        if self.current_target_type in BUILDING_CONVEYORS:
             # Stay on target
             return True
 
-        unconnected = set(filter(lambda p: p not in self.target_black_list and self.is_passable(p), self.pending_checks - self.checked))
+        unconnected = set(filter(lambda p: p[0] not in self.checked and p[0] not in self.target_black_list and self.is_passable(p[0]), self.pending_checks))
         if unconnected:
             to_check = next(iter(unconnected))
-            self.set_target(to_check, 0, BotState.GOING_TO_TARGET, TargetTypes.CONNECT_BRIDGE)
-            print(f"Nearest unexplored is an unconnected conveyor at: {to_check}")
+            self.set_target(to_check[0], 0, BotState.GOING_TO_TARGET, TargetTypes.CONNECT_BRIDGE, to_check[1])
+            print(f"Nearest unexplored is an unconnected conveyor at: {to_check[0]}")
             return to_check
         
         if self.current_target_type == TargetTypes.CONNECT_BRIDGE:
             return True
 
         unguarded = self.to_guard - self.target_black_list # set(filter(lambda p: p not in self.target_black_list, self.to_guard))
-        if unguarded and self.ct.get_global_resources()[0] >= self.ct.get_sentinel_cost()[0] and self.ct.get_current_round() >= 50:
+        if unguarded:
             to_check = next(iter(unguarded))
             self.set_target(to_check, 0, BotState.GOING_TO_TARGET, TargetTypes.SENTINEL)
             print(f"Nearest unexplored is a unprotected area at: {to_check}")
@@ -377,11 +463,11 @@ class LogisticsBot(Bot):
         
         return self.current_target_position if self.current_state == BotState.GOING_TO_TARGET and self.is_valid_target() else None
     
-    def set_wandering(self):
+    def update_targets(self):
         def visit_conveyors():
             to_visit = self.visiting_queue - self.visited - self.target_black_list
             if to_visit:
-                next_pos = next(iter(to_visit))
+                next_pos = min(to_visit, key=lambda p: self.position.distance_squared(p))
                 self.set_target(next_pos, 4, BotState.WANDERING, TargetTypes.WANDER)
                 print(f"Wandering to {next_pos} from visiting queue")
             return to_visit
@@ -393,6 +479,7 @@ class LogisticsBot(Bot):
         if next_pos and self.current_target_type != TargetTypes.ORE:
             self.visited_ore_sites.discard(prev_pos)
         if next_pos:
+            self.visited.clear()
             return
         elif (self.current_target_type == TargetTypes.ORE or self.current_state == BotState.WANDERING) and self.ct.get_global_resources()[0] < self.ct.get_harvester_cost()[0]:
             if not visit_conveyors():
@@ -410,62 +497,24 @@ class LogisticsBot(Bot):
                 self.explore_timer = self.adhd_severity
                 
 
-    def set_target(self, target_pos, distance_squared, state, target_type=TargetTypes.WANDER):
+    def set_target(self, target_pos, distance_squared, state, target_type=TargetTypes.WANDER, *args):
         self.current_target_type = target_type
+        self.target_args = args
+        if target_pos != self.previous_targets[-1] and target_pos != self.base_position and target_type != TargetTypes.WANDER:
+            self.previous_targets.append(target_pos)
         return super().set_target(target_pos, distance_squared, state)
     
     def build_conveyor_chain(self, from_pos: Position, to_pos: Position):
-        def get_closest_base_pos() -> Position:
-            dx = from_pos.x - self.base_position.x
-            dy = from_pos.y - self.base_position.y
-
-            step_x = 1 if dx > 0 else (-1 if dx < 0 else 0)
-            step_y = 1 if dy > 0 else (-1 if dy < 0 else 0)
-
-            return Position(self.base_position.x + step_x, self.base_position.y + step_y)
+        if not from_pos or not to_pos:
+            return
+        
         print("Called build conveyor chain")
         from_data = self.get_from_pos(from_pos)
         if self.ct.can_destroy(from_pos) and (from_data.destroyable() or from_data.is_team_road()):
             self.ct.destroy(from_pos)
 
-        bridge_target_pos_choices = self.get_positions_of_entities(from_pos, 9, EntityType.SPLITTER, self.team)
-        p = self.ct.get_position()
-
-        closest_base_pos = get_closest_base_pos()
-        if bridge_target_pos_choices:
-            bridge_target_pos = random.choice(bridge_target_pos_choices)
-            print(f"Trying to build bridge from {from_pos} to {bridge_target_pos}")
-            
-            if self.ct.can_build_bridge(from_pos, bridge_target_pos):
-                self.ct.build_bridge(from_pos, bridge_target_pos)
-                self.checked.add(from_pos)
-                if not self.build_harvester(from_pos):
-                    self.set_target(self.base_position, 16, BotState.WANDERING)
-            elif from_data.building_type in CONVEYORS and from_data.own_team:
-                self.checked.add(from_pos)
-                if not self.build_harvester(from_pos):
-                    self.set_target(self.base_position, 16, BotState.WANDERING)
-
-            return
-        elif from_pos.distance_squared(closest_base_pos) <= 9:
-            print(f"Trying to build bridge from {from_pos} to {closest_base_pos}")
-            if self.ct.can_build_bridge(from_pos, closest_base_pos):
-                self.ct.build_bridge(from_pos, closest_base_pos)
-                self.checked.add(from_pos)
-                if not self.build_harvester(from_pos):
-                    self.set_target(self.base_position, 16, BotState.WANDERING)
-            elif from_data.building_type in CONVEYORS and from_data.own_team:
-                self.checked.add(from_pos)
-                if not self.build_harvester(from_pos):
-                    self.set_target(self.base_position, 16, BotState.WANDERING)
-            return
-        
-        if not to_pos:
-            print("No target pos for conveyor chain")
-            return
-
         print(f"Building conveyor chain from {from_pos} to {to_pos}")
-
+        
         same_team = from_data and from_data.own_team
         
         if same_team and from_data.building_type in CONVEYORS:
@@ -476,14 +525,13 @@ class LogisticsBot(Bot):
             return
         
         dir = from_pos.direction_to(to_pos)
-        if from_pos.distance_squared(to_pos) > 1 or get_skibidi_distance(to_pos, self.base_position) == 2:
+        if from_pos.distance_squared(to_pos) > 1:
             if self.ct.can_build_bridge(from_pos, to_pos):
                 self.ct.build_bridge(from_pos, to_pos)
                 
-                self.set_target(to_pos, 0, BotState.GOING_TO_TARGET, TargetTypes.CONNECT_BRIDGE)
+                self.set_target(to_pos, 0, BotState.GOING_TO_TARGET, TargetTypes.CONNECT_BRIDGE, from_pos)
         elif from_pos.distance_squared(to_pos) == 1 and self.ct.can_build_conveyor(from_pos, dir):
-            if not from_data.bot_id or from_data.bot_team == self.team:
-                self.ct.build_conveyor(from_pos, dir)
+            self.ct.build_conveyor(from_pos, dir)
     
     def build_harvester(self, p=None):
         potential_harvester_pos = p or self.previous_position
@@ -543,7 +591,7 @@ class LogisticsBot(Bot):
             case TargetTypes.CONNECT_BRIDGE:
                 if (not self.is_passable(tile)):
                     return False
-                if (tile_data.bot_team == self.team):
+                if (tile_data.bot_team):
                     return False
             case TargetTypes.REPAIR:
                 damaged = tile_data and tile_data.building_id and self.ct.get_hp(tile_data.building_id) < self.ct.get_max_hp(tile_data.building_id)
@@ -553,16 +601,24 @@ class LogisticsBot(Bot):
                     return False
             case TargetTypes.SENTINEL:
                 guard_data = self.get_from_pos(self.current_target_position)
-                if guard_data is None or not (guard_data.building_type in IGNORED_BUILDINGS or guard_data.building_type == EntityType.ROAD or guard_data.destroyable()) or (guard_data.bot_id and guard_data.bot_id != self.id):
+                if guard_data is None or not (guard_data.building_type in IGNORED_BUILDINGS or guard_data.building_type == EntityType.ROAD or guard_data.destroyable()) or (guard_data.bot_team and guard_data.bot_id != self.id):
                     self.to_guard.discard(tile)
                     return False
-                elif any([turret.distance_squared(tile) < SENTINEL_RANGE / 2 for turret in self.turrets]):
+                elif any([turret.distance_squared(tile) < 2 for turret in self.turrets]):
                     self.to_guard.discard(tile)
                     return False
             case TargetTypes.WANDER:
                 target_data = self.get_from_pos(self.current_target_position)
                 if target_data and not (target_data.own_team and target_data.building_type in CONVEYORS):
                     self.visiting_queue.discard(self.current_target_position)
+            case TargetTypes.INTRUDER:
+                target_data = self.get_from_pos(self.current_target_position)
+                if target_data and (target_data.bot_team is None or target_data.bot_team) and target_data.building_type not in INVALID_CONTAINERS:
+                    self.enemy_intruder.discard(self.current_target_position)
+                    return False
+                if self.check_for_entity(self.current_target_position, DIRECTIONS, EntityType.LAUNCHER, self.team):
+                    self.enemy_intruder.discard(self.current_target_position)
+                    return False
         return True
 
     def encountered_wall(self, wall_pos: Position):
@@ -574,12 +630,16 @@ class LogisticsBot(Bot):
         if not wall_info:
             return
         
-        if self.current_target_type == TargetTypes.BASE:
-            if wall_info.bot_id and wall_info.bot_team == self.team:
+        if self.current_target_type in BUILDING_CONVEYORS:
+            if wall_info.is_team_bot(self.id):
                 self.set_target(self.base_position, 16, BotState.WANDERING)
             else:
-                if self.ct.can_destroy(self.position):
-                    self.ct.destroy(self.position)
+                # if self.ct.can_destroy(self.position):
+                #     self.ct.destroy(self.position)
+                #     if self.ct.can_build_road(self.position):
+                #         self.ct.build_road(self.position)
+                #     self.checked.discard(self.position)
+                    
                 self.set_target(self.base_position, 16, BotState.WANDERING)
             
 """

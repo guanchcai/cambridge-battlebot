@@ -1,10 +1,43 @@
-{Position(x=12, y=16), Position(x=14, y=16), Position(x=14, y=13), Position(x=17, y=12), Position(x=17, y=15), Position(x=16, y=14), Position(x=11, y=17), Position(x=13, y=14), Position(x=15, y=11), Position(x=16, y=10), Position(x=16, y=16), Position(x=15, y=14), Position(x=13, y=17), Position(x=16, y=13), Position(x=12, y=15), Position(x=14, y=12), Position(x=14, y=15), Position(x=17, y=14), Position(x=11, y=16), Position(x=13, y=10), Position(x=13, y=16), Position(x=15, y=13), Position(x=16, y=12), Position(x=15, y=16), Position(x=16, y=15), Position(x=14, y=11), Position(x=12, y=17), Position(x=14, y=14), Position(x=17, y=13), Position(x=13, y=15), Position(x=15, y=12), Position(x=15, y=15)}
+Running tick
+Can't fire from Position(x=2, y=13) to Position(x=0, y=10) direction Direction.NORTHWEST
+Can't fire from Position(x=2, y=13) to Position(x=1, y=10) direction Direction.NORTH
+Can't fire from Position(x=2, y=13) to Position(x=2, y=10) direction Direction.NORTH
+Can't fire from Position(x=2, y=13) to Position(x=3, y=10) direction Direction.NORTH
+Can't fire from Position(x=2, y=13) to Position(x=4, y=10) direction Direction.NORTHEAST
+Can't fire from Position(x=2, y=13) to Position(x=0, y=11) direction Direction.NORTHWEST
+Can't fire from Position(x=2, y=13) to Position(x=1, y=11) direction Direction.NORTHWEST
+Can't fire from Position(x=2, y=13) to Position(x=2, y=11) direction Direction.NORTH
+Can't fire from Position(x=2, y=13) to Position(x=3, y=11) direction Direction.NORTHEAST
+Can't fire from Position(x=2, y=13) to Position(x=4, y=11) direction Direction.NORTHEAST
+Can't fire from Position(x=2, y=13) to Position(x=5, y=11) direction Direction.NORTHEAST
+Can't fire from Position(x=2, y=13) to Position(x=0, y=12) direction Direction.NORTHWEST
+Not enemy team Position(x=1, y=12) entity EntityType.GUNNER
+Not enemy team Position(x=2, y=12) entity EntityType.HARVESTER
+Not enemy team Position(x=3, y=12) entity EntityType.CONVEYOR
+Can't fire from Position(x=2, y=13) to Position(x=4, y=12) direction Direction.NORTHEAST
+Can't fire from Position(x=2, y=13) to Position(x=5, y=12) direction Direction.EAST
+Can't fire from Position(x=2, y=13) to Position(x=0, y=13) direction Direction.WEST
+Not enemy team Position(x=1, y=13) entity EntityType.ROAD
+Can't fire from Position(x=2, y=13) to Position(x=2, y=13) direction Direction.CENTRE
+Not enemy team Position(x=3, y=13) entity EntityType.ROAD
+Can't fire from Position(x=2, y=13) to Position(x=4, y=13) direction Direction.EAST
+Can't fire from Position(x=2, y=13) to Position(x=5, y=13) direction Direction.EAST
+Can't fire from Position(x=2, y=13) to Position(x=0, y=14) direction Direction.SOUTHWEST
+Not enemy team Position(x=1, y=14) entity EntityType.ROAD
+Not enemy team Position(x=2, y=14) entity EntityType.ROAD
+Not enemy team Position(x=3, y=14) entity EntityType.ROAD
+Can't fire from Position(x=2, y=13) to Position(x=4, y=14) direction Direction.SOUTHEAST
+Can't fire from Position(x=2, y=13) to Position(x=5, y=14) direction Direction.EAST
+Can't fire from Position(x=2, y=13) to Position(x=0, y=15) direction Direction.SOUTHWEST
+Can't fire from Position(x=2, y=13) to Position(x=1, y=15) direction Direction.SOUTHWEST
+Can't fire from Position(x=2, y=13) to Position(x=2, y=15) direction Direction.SOUTH
+Can't fire from Position(x=2, y=13) to Position(x=3, y=15) direction Direction.SOUTHEAST
+Can't fire from Position(x=2, y=13) to Position(x=4, y=15) direction Direction.SOUTHEAST
+Can't fire from Position(x=2, y=13) to Position(x=5, y=15) direction Direction.SOUTHEAST
+Can't fire from Position(x=2, y=13) to Position(x=0, y=16) direction Direction.SOUTHWEST
+Can't fire from Position(x=2, y=13) to Position(x=1, y=16) direction Direction.SOUTH
+Can't fire from Position(x=2, y=13) to Position(x=2, y=16) direction Direction.SOUTH
+Can't fire from Position(x=2, y=13) to Position(x=3, y=16) direction Direction.SOUTH
+Can't fire from Position(x=2, y=13) to Position(x=4, y=16) direction Direction.SOUTHEAST
 []
-开始计时 0
-Path find started at 0
-Path find ended at 0
-Distance map: deque([Position(x=13, y=13), Position(x=13, y=14), Position(x=14, y=15)])
-Build road start 0
-Build road finish 0
-计时 ended 0
-Time left to diddle 0
+{}

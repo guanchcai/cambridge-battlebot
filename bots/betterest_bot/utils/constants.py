@@ -41,7 +41,7 @@ DIAGONAL_DELTAS = [
     (-1, 1, 0.3)
 ]
 ALL_DELTAS = CARDINAL_DELTAS + DIAGONAL_DELTAS
-BRIDGE_PENALTY = 4
+BRIDGE_PENALTY = 6
 BRIDGE_DELTAS = [(dx, dy, BRIDGE_PENALTY) for dx in range(-3, 4) for dy in range(-3, 4) if 1 < dx*dx + dy*dy <= 9]
 EXPLORE_TIMER = 4
 DEMENTIA_RATE = 0.9
@@ -56,7 +56,7 @@ class DeltaTypes(Enum):
     ALL = 2
     BRIDGE = 3
 
-BASE_DIST = 18
+BASE_DIST = 2
 FOUNDARY_THRESHHOLD = 600
 class TargetTypes(Enum):
     # Lower number = higher priority
@@ -69,6 +69,10 @@ class TargetTypes(Enum):
     CONNECT_BRIDGE = 6
     ORE = 7
     WANDER = 8
+    CARRYING_AXIOMNITE = 9
+    INTRUDER = 10
+
+BUILDING_CONVEYORS = {TargetTypes.BASE, TargetTypes.CARRYING_AXIOMNITE}
 
 TURRET_THREAT_RADIUS = 2
 _SENTINEL = object()

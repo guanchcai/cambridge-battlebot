@@ -29,20 +29,20 @@ class AStarPathfinder:
     def get_penalty(self, index, team, bot_id, bridge_allowed):
         tile = self.map[index]
         if tile is None:
-            return 1
+            return 0 if not bridge_allowed else math.inf
         if tile.destroyable():
             if bridge_allowed:
                 # We are bridging back, so it is safe to ignore all walls
                 return 0
             return 5
         if tile.building_type == EntityType.HARVESTER:
-            return 10000
+            return math.inf
         if tile.passable(self.ct):
             return 0
         if tile.bot_id == bot_id:
             return 0
-        if tile.bot_team == team:
-            if bridge_allowed or (bot_id < tile.bot_id and tile.building_type != EntityType.CORE) and random.random() > 0.8:
+        if tile.bot_team:
+            if bridge_allowed or ((bot_id < tile.bot_id and tile.building_type != EntityType.CORE) and random.random() > 0.8):
                 return 0
         return math.inf
     
@@ -98,6 +98,7 @@ class AStarPathfinder:
             best_f_score = math.inf
 
             open_b = []
+            connect_bridge = ct.get_tile_env(start) not in ORE_SITES
             
             g_f = [math.inf] * self.area
             parent_f = [None] * self.area
@@ -189,7 +190,7 @@ class AStarPathfinder:
                                 mu = cand
                                 meet = next_index
                 
-                if self.ct.get_tile_env(start) not in ORE_SITES and build_bridge:
+                if (connect_bridge or index_start != u) and build_bridge:
                     for v in direction_to_delta(DeltaTypes.BRIDGE):
                         next_index = self.add_to_id(u, v[0], v[1])
                         if next_index is None:
@@ -257,7 +258,7 @@ class AStarPathfinder:
                             continue
 
                         penalty = self.get_penalty(next_index, team, bot_id, bridge_allowed)
-                        if math.isinf(penalty) or next_index == index_start:
+                        if math.isinf(penalty) or (next_index == index_start and not connect_bridge):
                             continue
                         
                         ng = g_b[u] + penalty + v[2]

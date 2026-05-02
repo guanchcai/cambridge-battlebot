@@ -4,7 +4,7 @@ import math
 
 class Core(EBase):
     def __init__(self, ct: Controller):
-        self.spawn_queue = [Direction.NORTH, Direction.SOUTH, Direction.CENTRE, Direction.WEST]
+        self.spawn_queue = [Direction.NORTH, Direction.SOUTH, Direction.WEST]
         self.spawned = 0
         self.aggressors_spawned = 0  # Track number of aggressors spawned
         
@@ -36,10 +36,10 @@ class Core(EBase):
 
 
         c_r = ct.get_current_round()
-        if c_r in {min(self.map_width, self.map_height) // 2, 500, 1000, 1500}:
-            self.spawn_queue.append(Direction.EAST)
+        if c_r in {min(self.map_width, self.map_height) // 2, 50, 100, 200, 300, 400, 500, 1000, 1500}:
+            self.spawn_queue.append(Direction.NORTH)
         
-        if c_r in {50, 200, 500, 1000, 1100, 1200, 1300, 1400, 1500}:
+        if c_r in {100, 200, 250, 500, 1000, 1100, 1200, 1300, 1400, 1500}:
             self.spawn_queue.append(Direction.WEST)
 
 
@@ -55,10 +55,6 @@ class Core(EBase):
         else:
             self.no_bot_counter = 0
 
-        if self.no_bot_counter >= min(self.map_width, self.map_height) // 2 and not self.spawn_queue:
-            self.spawn_queue.append(Direction.EAST)
-            self.no_bot_counter = 0
-
         if self.spawn_queue:
             spawn_dir = self.spawn_queue[0]
             spawn_pos = self.original_position.add(spawn_dir)
@@ -67,16 +63,6 @@ class Core(EBase):
                 self.spawn_queue.pop(0)
                 self.spawned += 1
 
-                if spawn_dir == Direction.CENTRE:
-                    self.builder_id = id
-                # elif spawn_dir == Direction.WEST:
-                #     self.aggressors_spawned += 1  # Increment aggressor count on spawn
-
         ti, ax = ct.get_global_resources()
         if ct.get_current_round() < 1000 and ax > 1:
             ct.convert(ax - 1)
-
-        try:
-            ct.get_position(self.builder_id)
-        except Exception:  # need to make a new builder
-            self.spawn_queue.insert(0, Direction.CENTRE) 

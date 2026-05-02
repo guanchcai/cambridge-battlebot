@@ -23,6 +23,7 @@ class Aggressor(Bot):
         self.enemy_bots = set()
 
         self.to_eval = set()
+        self.eval_score = 0
 
         self.current_target_type = TargetTypes.WANDER
         self.current_target_source = None
@@ -46,8 +47,7 @@ class Aggressor(Bot):
         if random.random() > DEMENTIA_RATE and self.visited_ore_sites:
             self.visited_ore_sites.pop()
         super().update_map()
-
-        print(self.to_eval)
+        
         for tile in self.to_eval:
             tile_data = self.get_from_pos(tile)
             self.evaluate_aggressor_target(tile, tile_data)
@@ -78,38 +78,8 @@ class Aggressor(Bot):
         elif tile_data.building_type == EntityType.LAUNCHER:
             self.allied_launchers.add(tile)
 
-        if tile_data.bot_id and tile_data.bot_team != self.team:
+        if tile_data.bot_id and tile_data.bot_team is not None and not tile_data.bot_team:
             self.enemy_bots.add(tile)
-        
-    def unreachable_path(self):
-        if self.current_state == BotState.WANDERING:
-            return super().unreachable_path()
-        
-        self.target_black_list.add(self.current_target_position)
-        self.set_wandering()
-        # Check if we already have a launcher built
-        # if self.own_launcher_pos is not None:
-        #     own_launcher_data = self.get_from_pos(self.own_launcher_pos)
-
-        #     own_launcher_exists = (
-        #         own_launcher_data and
-        #         own_launcher_data.building_type == EntityType.LAUNCHER and
-        #         own_launcher_data.own_team
-        #     )
-
-        #     if not own_launcher_exists:
-        #         self.own_launcher_pos = None
-        #         self.rounds_without_launch = 0
-        #     else:
-        #         self.set_target(self.own_launcher_pos, 2, BotState.GOING_TO_TARGET)
-
-        # # Try to place a new launcher if we don't have one
-        # if self.own_launcher_pos is None:
-        #     launcher_pos = self._try_build_launcher()
-        #     if launcher_pos:
-        #         self.own_launcher_pos = launcher_pos
-        #         self.rounds_without_launch = 0
-        #         self.set_target(launcher_pos, 2, BotState.GOING_TO_TARGET)
     
     def set_wandering(self):
         if not self.nearest_unexplored():
@@ -187,11 +157,11 @@ class Aggressor(Bot):
                         self.ct.build_barrier(self.current_target_position)
 
 
-    def evaluate_aggressor_target(self, tile: Position, tile_data: TileData):
+    def evaluate_aggressor_target(self, tile: Position, tile_data: TileData):        
         def evaluate_harvesters():
             for d in CARDINAL_DIRECTIONS:
                 check_pos = tile.add(d)
-                if not checkable_position(check_pos, self.ct):
+                if not checkable_position(check_pos, self.ct) or check_pos in self.target_black_list:
                     continue
                 check_data = self.get_from_pos(check_pos)
                 if check_data.environment == Environment.WALL:
@@ -210,7 +180,7 @@ class Aggressor(Bot):
             target_data = self.get_from_pos(conveyor_target)
             if conveyor_target and checkable_position(conveyor_target, self.ct):
                 if target_data.building_type in CAN_BUILD_OVER and target_data.environment != Environment.WALL:
-                    if target_data.bot_team != self.team or target_data.bot_id == self.id:
+                    if not target_data.bot_team or target_data.bot_id == self.id:
                         eval = 50
                         target_tile = conveyor_target
                       
@@ -233,6 +203,9 @@ class Aggressor(Bot):
                 19: titanium connecting to nothing
                 20: refined axiomnite connecting to nothing
             """
+            if target_tile in self.target_black_list:
+                return
+            
             if self.ct.get_current_round() >= 50 or eval > 0:
                 self.conveyor_targets.append((eval, target_tile))
         
@@ -372,8 +345,9 @@ class Aggressor(Bot):
                     return True
         return False
     
-    def set_target(self, target_pos, distance_squared, state, target_type=TargetTypes.WANDER):
+    def set_target(self, target_pos, distance_squared, state, target_type=TargetTypes.WANDER, score=0):
         self.current_target_type = target_type
+        self.eval_score = score
         super().set_target(target_pos, distance_squared, state)
 
     def nearest_unexplored(self) -> Position | None:
@@ -387,8 +361,10 @@ class Aggressor(Bot):
         filtered_conveyor_targets = list(filter(lambda x: x[1] not in self.target_black_list and (self.ct.get_current_round() > 50 or x[0] >= 0), self.conveyor_targets)) # 50 round to get economy
         print(filtered_conveyor_targets)
         if filtered_conveyor_targets:
-            _, target = max(filtered_conveyor_targets, key=lambda x: x[0] * 1000 - self.position.distance_squared(x[1]))
-            self.set_target(target, 0, BotState.GOING_TO_TARGET, TargetTypes.AGG_DISCONNECTED_CONVEYOR)
+            score, target = max(filtered_conveyor_targets, key=lambda x: x[0] * 1000 - self.enemy_base_pos.distance_squared(x[1]))
+            if score <= self.eval_score and self.is_valid_target(self.current_target_position):
+                return target
+            self.set_target(target, 0, BotState.GOING_TO_TARGET, TargetTypes.AGG_DISCONNECTED_CONVEYOR, score)
             return target
         
     def unreachable_path(self):

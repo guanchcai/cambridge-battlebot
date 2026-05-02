@@ -8,7 +8,7 @@ class TileData:
     def __init__(
         self, position: Position, env: Environment, b_id: int | None=None, 
         b_type: EntityType | None=None, b_team: bool | None=None, 
-        bot_id: int | None=None, bot_team: Team | None=None
+        bot_id: int | None=None, bot_team: bool | None=None
     ):
         self.position = position
         self.environment = env
